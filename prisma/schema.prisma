@@ -71,7 +71,8 @@ model Booking {
   id String @id @default(cuid())
 
   date        String // ISO-datum, "2026-09-01"
-  timeSlot    String // "11:30"
+  sitting     String  @default("") // Vad gästen valde: "11:30" eller "12:30"
+  timeSlot    String // Faktisk tilldelad ankomsttid inom sittningen, t.ex. "11:45"
   partySize   Int
   tableTypeId String // matchar id i Settings.tableTypesJson
 
@@ -87,10 +88,17 @@ model Booking {
   // confirmed | cancelled
   status String @default("confirmed")
 
+  // Slumpad hemlighet i avbokningslänken i mailet — gör att en gäst kan
+  // avboka sig själv utan inloggning, utan att kunna gissa sig till
+  // andra gästers bokningar. Nullable så att kolumnen kan läggas till
+  // ovanpå redan befintliga bokningar utan att krocka med unikhetskravet
+  // (nya bokningar får alltid ett riktigt värde, se createBooking).
+  cancelToken String? @unique
+
   reminderSentAt DateTime?
 
   createdAt DateTime @default(now())
 
-  @@index([date, timeSlot])
+  @@index([date, sitting])
   @@index([date, status])
 }

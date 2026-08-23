@@ -29,6 +29,7 @@ type Settings = {
 type Booking = {
   id: string;
   date: string;
+  sitting: string;
   timeSlot: string;
   partySize: number;
   tableTypeId: string;
@@ -354,6 +355,7 @@ export default function AdminDashboard() {
               <thead className="bg-paper-100 text-left">
                 <tr>
                   <Th>Datum</Th>
+                  <Th>Sittning</Th>
                   <Th>Tid</Th>
                   <Th>Namn</Th>
                   <Th>Antal</Th>
@@ -374,6 +376,7 @@ export default function AdminDashboard() {
                     }`}
                   >
                     <Td>{b.date}</Td>
+                    <Td className="font-mono">{b.sitting}</Td>
                     <Td className="font-mono">{b.timeSlot}</Td>
                     <Td>{b.name}</Td>
                     <Td>{b.partySize}</Td>

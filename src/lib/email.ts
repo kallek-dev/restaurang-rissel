@@ -20,6 +20,30 @@ function fromAddress(settings: AppSettings): string {
   );
 }
 
+// Basadress till sajten, för att bygga fullständiga länkar i mail.
+// NEXT_PUBLIC_SITE_URL kan sättas manuellt (rekommenderas i produktion);
+// annars faller den tillbaka på Vercels automatiska VERCEL_URL.
+function siteBaseUrl(): string {
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  return "http://localhost:3000";
+}
+
+function manageUrl(booking: Booking): string {
+  return `${siteBaseUrl()}/min-bokning/${booking.id}?token=${booking.cancelToken ?? ""}`;
+}
+
+function manageButtonHtml(booking: Booking): string {
+  return `
+    <p style="margin: 20px 0 0;">
+      <a href="${manageUrl(booking)}" style="display:inline-block; background:#16241C; color:#F1EEE3; text-decoration:none; padding:10px 22px; border-radius:4px; font-size:13px; font-weight:600;">Ändra eller avboka</a>
+    </p>`;
+}
+
 function formatDateSwedish(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number);
   const date = new Date(Date.UTC(y, m - 1, d, 12));
@@ -72,7 +96,8 @@ export async function sendBookingConfirmation(
           ? `<p><strong>Allergier/önskemål:</strong> ${escapeHtml(booking.allergies)}</p>`
           : ""
       }
-      <p>Du får en påminnelse dagen innan. Vill du ändra eller avboka, hör av dig till oss.</p>
+      <p>Du får en påminnelse dagen innan. Vill du ändra eller avboka går det bra att göra själv här:</p>
+      ${manageButtonHtml(booking)}
     `,
     settings
   );
@@ -81,6 +106,43 @@ export async function sendBookingConfirmation(
     from: fromAddress(settings),
     to: booking.email,
     subject: `Bokningsbekräftelse — ${formatDateSwedish(booking.date)} kl ${booking.timeSlot}`,
+    html,
+  });
+}
+
+export async function sendBookingUpdated(
+  booking: Booking,
+  settings: AppSettings
+) {
+  const resend = getResend();
+  if (!resend) return;
+
+  const html = wrapTemplate(
+    "Din bokning är ändrad",
+    `
+      <p>Hej ${escapeHtml(booking.name)},</p>
+      <p>Er bokning hos ${escapeHtml(settings.restaurantName)} är uppdaterad. Nya uppgifter:</p>
+      <table style="width:100%; border-collapse: collapse; margin: 16px 0;">
+        <tr><td style="padding:4px 0; color:#647459;">Dag</td><td style="padding:4px 0; text-align:right; font-weight:600;">${formatDateSwedish(booking.date)}</td></tr>
+        <tr><td style="padding:4px 0; color:#647459;">Tid</td><td style="padding:4px 0; text-align:right; font-weight:600;">${booking.timeSlot}</td></tr>
+        <tr><td style="padding:4px 0; color:#647459;">Antal personer</td><td style="padding:4px 0; text-align:right; font-weight:600;">${booking.partySize}</td></tr>
+        <tr><td style="padding:4px 0; color:#647459;">Bokningsnummer</td><td style="padding:4px 0; text-align:right; font-weight:600;">${booking.id.slice(-8).toUpperCase()}</td></tr>
+      </table>
+      ${
+        booking.allergies
+          ? `<p><strong>Allergier/önskemål:</strong> ${escapeHtml(booking.allergies)}</p>`
+          : ""
+      }
+      <p>Vill du ändra igen eller avboka, gör det själv här:</p>
+      ${manageButtonHtml(booking)}
+    `,
+    settings
+  );
+
+  await resend.emails.send({
+    from: fromAddress(settings),
+    to: booking.email,
+    subject: `Bokning uppdaterad — ${formatDateSwedish(booking.date)} kl ${booking.timeSlot}`,
     html,
   });
 }
@@ -102,7 +164,8 @@ export async function sendBookingReminder(
           ? `<p><strong>Noterade allergier/önskemål:</strong> ${escapeHtml(booking.allergies)}</p>`
           : ""
       }
-      <p>Kan ni inte längre komma? Hör av dig så snart som möjligt.</p>
+      <p>Behöver ni ändra tid, antal personer, eller kan ni inte längre komma? Gör det själv här, så snart som möjligt:</p>
+      ${manageButtonHtml(booking)}
     `,
     settings
   );

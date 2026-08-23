@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import TicketPreview from "./TicketPreview";
+import Calendar from "./Calendar";
+import SlotPicker from "./SlotPicker";
 
 type PublicSettings = {
   systemOpen: boolean;
@@ -15,38 +17,20 @@ type PublicSettings = {
 type SlotAvailability = {
   time: string;
   full: boolean;
-  tableAvailability: Record<string, number>;
+};
+
+type SittingGroup = {
+  sitting: string;
+  slots: SlotAvailability[];
 };
 
 type DateAvailability = {
   date: string;
   open: boolean;
-  slots: SlotAvailability[];
+  sittingGroups: SittingGroup[];
 };
 
 const WEEKDAY_SHORT = ["Sön", "Mån", "Tis", "Ons", "Tor", "Fre", "Lör"];
-
-function pad2(n: number): string {
-  return String(n).padStart(2, "0");
-}
-function localDateStr(year: number, month: number, day: number): string {
-  return `${year}-${pad2(month + 1)}-${pad2(day)}`;
-}
-function todayLocalStr(): string {
-  const d = new Date();
-  return localDateStr(d.getFullYear(), d.getMonth(), d.getDate());
-}
-const MONTH_NAMES = [
-  "Januari", "Februari", "Mars", "April", "Maj", "Juni",
-  "Juli", "Augusti", "September", "Oktober", "November", "December",
-];
-function isSameOrAfterCurrentMonth(year: number, month: number): boolean {
-  const now = new Date();
-  return (
-    year > now.getFullYear() ||
-    (year === now.getFullYear() && month >= now.getMonth())
-  );
-}
 
 type SubmitState =
   | { status: "idle" }
@@ -83,35 +67,6 @@ export default function BookingForm() {
   const [submitState, setSubmitState] = useState<SubmitState>({
     status: "idle",
   });
-
-  const [calendarMonth, setCalendarMonth] = useState(() => {
-    const now = new Date();
-    return { year: now.getFullYear(), month: now.getMonth() };
-  });
-
-  function goPrevMonth() {
-    setCalendarMonth((cur) => {
-      let { year, month } = cur;
-      month -= 1;
-      if (month < 0) {
-        month = 11;
-        year -= 1;
-      }
-      if (!isSameOrAfterCurrentMonth(year, month)) return cur;
-      return { year, month };
-    });
-  }
-  function goNextMonth() {
-    setCalendarMonth((cur) => {
-      let { year, month } = cur;
-      month += 1;
-      if (month > 11) {
-        month = 0;
-        year += 1;
-      }
-      return { year, month };
-    });
-  }
 
   useEffect(() => {
     fetch("/api/settings")
@@ -187,7 +142,7 @@ export default function BookingForm() {
           status: "error",
           message: data.error ?? "Något gick fel. Försök igen.",
         });
-        // Tiden kan ha blivit fullbokad under tiden — hämta om.
+        // Sittningen kan ha blivit fullbokad under tiden — hämta om.
         if (selectedDate) {
           fetch(`/api/availability?date=${selectedDate}`)
             .then((r) => r.json())
@@ -285,53 +240,11 @@ export default function BookingForm() {
         {/* Dag */}
         <section>
           <SectionLabel step="01" title="Välj dag" />
-          <div className="max-w-xs">
-            <div className="flex items-center justify-between mb-2">
-              <button
-                type="button"
-                onClick={goPrevMonth}
-                disabled={
-                  !isSameOrAfterCurrentMonth(
-                    calendarMonth.month === 0
-                      ? calendarMonth.year - 1
-                      : calendarMonth.year,
-                    calendarMonth.month === 0 ? 11 : calendarMonth.month - 1
-                  )
-                }
-                className="w-8 h-8 border border-ink/20 rounded-sm text-ink disabled:opacity-25 disabled:cursor-not-allowed hover:border-ink/50"
-              >
-                ‹
-              </button>
-              <h3 className="font-display uppercase text-sm tracking-wide">
-                {MONTH_NAMES[calendarMonth.month]} {calendarMonth.year}
-              </h3>
-              <button
-                type="button"
-                onClick={goNextMonth}
-                className="w-8 h-8 border border-ink/20 rounded-sm text-ink hover:border-ink/50"
-              >
-                ›
-              </button>
-            </div>
-            <div className="grid grid-cols-7 gap-1 mb-1">
-              {["M", "T", "O", "T", "F", "L", "S"].map((d, i) => (
-                <span
-                  key={i}
-                  className="text-center text-[10px] uppercase tracking-widest text-sage"
-                >
-                  {d}
-                </span>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-1">
-              {renderCalendarCells(
-                calendarMonth,
-                selectedDate,
-                settings.openDays,
-                setSelectedDate
-              )}
-            </div>
-          </div>
+          <Calendar
+            selectedDate={selectedDate}
+            onSelect={setSelectedDate}
+            openDays={settings.openDays}
+          />
           <p className="text-xs text-sage mt-2">
             Vi har öppet{" "}
             {settings.openDays
@@ -353,27 +266,12 @@ export default function BookingForm() {
             <p className="text-sm text-sage font-mono">Hämtar lediga tider…</p>
           )}
           {selectedDate && !loadingAvailability && availability && (
-            <div className="flex flex-wrap gap-2">
-              {availability.slots.map((slot) => {
-                const selected = selectedTime === slot.time;
-                return (
-                  <button
-                    type="button"
-                    key={slot.time}
-                    disabled={slot.full || largeParty}
-                    onClick={() => setSelectedTime(slot.time)}
-                    className={timeChipClass(selected, slot.full)}
-                  >
-                    {slot.time}
-                  </button>
-                );
-              })}
-              {availability.slots.length === 0 && (
-                <p className="text-sm text-sage">
-                  Inga tider tillgängliga den här dagen.
-                </p>
-              )}
-            </div>
+            <SlotPicker
+              groups={availability.sittingGroups}
+              selectedTime={selectedTime}
+              onSelect={setSelectedTime}
+              disabled={largeParty}
+            />
           )}
         </section>
 
@@ -556,66 +454,5 @@ function dayChipClass(selected: boolean, disabled: boolean) {
       : selected
       ? "bg-ink text-paper border-ink"
       : "border-ink/20 text-ink hover:border-ink/50",
-  ].join(" ");
-}
-
-function renderCalendarCells(
-  calendarMonth: { year: number; month: number },
-  selectedDate: string | null,
-  openDays: number[],
-  onSelect: (date: string) => void
-): React.ReactNode[] {
-  const { year, month } = calendarMonth;
-  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7; // Mån=0 ... Sön=6
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = todayLocalStr();
-
-  const cells: React.ReactNode[] = [];
-  for (let i = 0; i < firstWeekday; i++) {
-    cells.push(<div key={`empty-${i}`} />);
-  }
-
-  for (let day = 1; day <= daysInMonth; day++) {
-    const dateStr = localDateStr(year, month, day);
-    const weekday = new Date(year, month, day).getDay();
-    const isPast = dateStr < today;
-    const isClosed = !openDays.includes(weekday);
-    const disabled = isPast || isClosed;
-    const isToday = dateStr === today;
-    const isSelected = selectedDate === dateStr;
-
-    cells.push(
-      <button
-        type="button"
-        key={dateStr}
-        disabled={disabled}
-        onClick={() => onSelect(dateStr)}
-        className={[
-          "relative aspect-square flex items-center justify-center rounded-sm text-sm font-semibold border transition-colors",
-          disabled
-            ? "text-ink/25 cursor-not-allowed border-transparent"
-            : "border-transparent hover:border-gold text-ink",
-          isSelected ? "bg-ink text-paper" : !disabled ? "bg-white" : "",
-        ].join(" ")}
-      >
-        {day}
-        {isToday && !isSelected && (
-          <span className="absolute bottom-1 w-1 h-1 rounded-full bg-gold" />
-        )}
-      </button>
-    );
-  }
-
-  return cells;
-}
-
-function timeChipClass(selected: boolean, full: boolean) {
-  return [
-    "px-4 py-2 rounded-sm border text-sm font-mono transition-colors",
-    full
-      ? "border-ink/10 text-ink/25 cursor-not-allowed line-through"
-      : selected
-      ? "bg-gold text-ink border-gold"
-      : "border-ink/20 text-ink hover:border-gold",
   ].join(" ");
 }

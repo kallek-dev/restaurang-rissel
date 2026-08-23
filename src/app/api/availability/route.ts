@@ -7,6 +7,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get("date");
+  const exclude = req.nextUrl.searchParams.get("exclude") ?? undefined;
 
   if (!date || !DATE_RE.test(date)) {
     return NextResponse.json(
@@ -15,6 +16,6 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const availability = await getAvailabilityForDate(date);
+  const availability = await getAvailabilityForDate(date, exclude);
   return NextResponse.json(availability);
 }

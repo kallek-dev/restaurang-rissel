@@ -12,6 +12,7 @@ export async function buildBookingsWorkbook(
 
   sheet.columns = [
     { header: "Datum", key: "date", width: 14 },
+    { header: "Sittning", key: "sitting", width: 10 },
     { header: "Tid", key: "timeSlot", width: 8 },
     { header: "Namn", key: "name", width: 24 },
     { header: "Antal personer", key: "partySize", width: 14 },
@@ -33,6 +34,7 @@ export async function buildBookingsWorkbook(
   for (const b of bookings) {
     sheet.addRow({
       date: b.date,
+      sitting: b.sitting,
       timeSlot: b.timeSlot,
       name: b.name,
       partySize: b.partySize,

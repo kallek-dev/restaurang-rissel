@@ -9,6 +9,12 @@ export default function AdminPage() {
     <main className="min-h-screen">
       <header className="border-b border-ink/10">
         <div className="max-w-6xl mx-auto px-6 py-8">
+          <a
+            href="/"
+            className="inline-flex items-center gap-1 text-sm text-sage hover:text-ink underline decoration-dotted mb-3"
+          >
+            ← Till bokningssidan
+          </a>
           <p className="font-mono text-xs uppercase tracking-[0.3em] text-sage">
             Restaurang Rissel
           </p>
