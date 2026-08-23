@@ -1,0 +1,96 @@
+// Databasschema för Restaurang Rissels bokningssystem.
+//
+// Provider är satt till "postgresql" eftersom projektet driftsätts på
+// Vercel med en Postgres-databas (t.ex. Neon via Vercel Storage).
+// DATABASE_URL sätts som miljövariabel, se README.md.
+
+generator client {
+  provider      = "prisma-client-js"
+  // "native" täcker din lokala dator. De två rhel-målen täcker Netlifys
+  // (och AWS Lambdas) serverless-körmiljö — utan dem har Prisma historiskt
+  // byggt fel databasmotor på Netlify och kraschat i produktion.
+  binaryTargets = ["native", "rhel-openssl-1.0.x", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enda raden (id = 1) med alla inställningar för restaurangen.
+// Redigeras via adminpanelen, ingen kodändring krävs.
+model Settings {
+  id Int @id @default(autoincrement())
+
+  // Huvudbrytare: stänger hela bokningssystemet för gäster.
+  systemOpen Boolean @default(true)
+
+  // Vilka veckodagar restaurangen tar bokningar.
+  // 0 = söndag ... 6 = lördag. Standard: tis(2), ons(3), fre(5).
+  openDaysJson String @default("[2,3,5]")
+
+  // Sittningstider, t.ex. ["11:30","12:30"]
+  sittingsJson String @default("[\"11:30\",\"12:30\"]")
+
+  // Hur långt (minuter) efter varje sittningstid som kvartsslottar skapas.
+  // T.ex. 60 min från 11:30 ger slottar 11:30, 11:45, 12:00, 12:15.
+  sittingWindowMinutes Int @default(60)
+
+  // Intervall mellan bokningsbara tider, i minuter.
+  slotIntervalMinutes Int @default(15)
+
+  // Max antal bord som får sitta ner under samma kvart.
+  maxTablesPerSlot Int @default(4)
+
+  // Max antal sällskap (bokningar) per kvart.
+  maxPartiesPerSlot Int @default(4)
+
+  // Bordstyper, t.ex.
+  // [{"id":"small","label":"Bord för 2","seats":2,"minPeople":1,"count":6},
+  //  {"id":"large","label":"Bord för 4","seats":4,"minPeople":2,"count":7}]
+  tableTypesJson String @default("[{\"id\":\"small\",\"label\":\"Bord för 2\",\"seats\":2,\"minPeople\":1,\"count\":6},{\"id\":\"large\",\"label\":\"Bord för 4\",\"seats\":4,\"minPeople\":2,\"count\":7}]")
+
+  // Största sällskap som får boka direkt i systemet. Större sällskap
+  // hänvisas till att maila restaurangen istället.
+  maxOnlinePartySize Int @default(4)
+
+  // Mailadress som visas för frågor och för stora sällskap.
+  contactEmail String @default("info@restaurangrissel.se")
+
+  // GDPR: hur många månader en bokning (med namn, mail, telefon,
+  // ev. allergier) sparas innan den raderas automatiskt.
+  // Se /api/cron/cleanup och README → "GDPR".
+  retentionMonths Int @default(12)
+
+  restaurantName String @default("Restaurang Rissel")
+
+  updatedAt DateTime @updatedAt
+}
+
+model Booking {
+  id String @id @default(cuid())
+
+  date        String // ISO-datum, "2026-09-01"
+  timeSlot    String // "11:30"
+  partySize   Int
+  tableTypeId String // matchar id i Settings.tableTypesJson
+
+  name      String
+  email     String
+  phone     String
+  allergies String @default("")
+
+  // Måste vara true om "allergies" innehåller text — gästen har då
+  // aktivt godkänt att uppgiften sparas (känsligare personuppgift).
+  allergyConsent Boolean @default(false)
+
+  // confirmed | cancelled
+  status String @default("confirmed")
+
+  reminderSentAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([date, timeSlot])
+  @@index([date, status])
+}

@@ -1,0 +1,20 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getAvailabilityForDate } from "@/lib/availability";
+
+export const dynamic = "force-dynamic";
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export async function GET(req: NextRequest) {
+  const date = req.nextUrl.searchParams.get("date");
+
+  if (!date || !DATE_RE.test(date)) {
+    return NextResponse.json(
+      { error: "Ogiltigt eller saknat datum (förväntar YYYY-MM-DD)." },
+      { status: 400 }
+    );
+  }
+
+  const availability = await getAvailabilityForDate(date);
+  return NextResponse.json(availability);
+}

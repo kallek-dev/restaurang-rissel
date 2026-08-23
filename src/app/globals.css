@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: #f1eee3;
+  background-image: radial-gradient(
+    circle,
+    rgba(22, 36, 28, 0.08) 1px,
+    transparent 1px
+  );
+  background-size: 16px 16px;
+}
+
+::selection {
+  background-color: #d9a441;
+  color: #16241c;
+}
+
+:focus-visible {
+  outline: 2px solid #16241c;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.ticket-notch {
+  position: relative;
+}
+
+.ticket-notch::before,
+.ticket-notch::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: #f1eee3;
+  border-radius: 9999px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.ticket-notch::before {
+  left: -8px;
+}
+
+.ticket-notch::after {
+  right: -8px;
+}

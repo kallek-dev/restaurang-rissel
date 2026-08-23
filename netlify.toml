@@ -1,0 +1,14 @@
+# Netlify-konfiguration. Vercel läser inte den här filen (den använder
+# vercel.json istället), så projektet funkar på båda utan konflikt.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Påminnelsemailen (/api/cron/reminders) triggas INTE automatiskt av något
+# i den här filen. Netlify har "Scheduled Functions" men de använder ett
+# annat API-format än vanliga Next.js-routes. Enklast: schemalägg ett
+# dagligt anrop via en extern gratistjänst, se README → "Daglig påminnelse".
