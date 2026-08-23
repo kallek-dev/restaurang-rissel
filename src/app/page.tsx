@@ -12,7 +12,6 @@ export default function Home() {
             Restaurang Rissel
           </h1>
           <p className="mt-3 text-ink/70 max-w-xl">
-            Skolans träningsrestaurang serverar lunch till allmänheten.
             Boka ditt bord nedan — vi bekräftar direkt via mail.
           </p>
         </div>
