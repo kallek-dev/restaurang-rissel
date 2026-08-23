@@ -15,6 +15,7 @@ const tableTypeSchema = z.object({
   seats: z.number().int().min(1),
   minPeople: z.number().int().min(1),
   count: z.number().int().min(0),
+  maxPerSlot: z.number().int().min(0).optional(),
 });
 
 const updateSchema = z.object({

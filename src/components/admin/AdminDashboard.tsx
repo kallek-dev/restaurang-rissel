@@ -8,6 +8,7 @@ type TableType = {
   seats: number;
   minPeople: number;
   count: number;
+  maxPerSlot?: number;
 };
 
 type Settings = {
@@ -134,6 +135,15 @@ export default function AdminDashboard() {
     if (!settings) return;
     const next = settings.tableTypes.map((t) =>
       t.id === id ? { ...t, count } : t
+    );
+    saveSettings({ tableTypes: next });
+  }
+
+  function updateTableTypeMaxPerSlot(id: string, value: string) {
+    if (!settings) return;
+    const maxPerSlot = value.trim() === "" ? undefined : Number(value);
+    const next = settings.tableTypes.map((t) =>
+      t.id === id ? { ...t, maxPerSlot } : t
     );
     saveSettings({ tableTypes: next });
   }
@@ -267,6 +277,13 @@ export default function AdminDashboard() {
               <p className="text-xs uppercase tracking-widest text-sage mb-3">
                 Bordstyper
               </p>
+              <p className="text-xs text-sage mb-3">
+                "Max samtidigt" är valfritt — sätt ett tal om ni t.ex. inte
+                vill att för många fyrbord ska sitta ner i samma kvart
+                (annars sprids bokningarna bara ut av den generella
+                kvarts-gränsen ovan, oavsett bordstyp). Lämna tomt för
+                ingen extra gräns.
+              </p>
               <div className="space-y-2">
                 {settings.tableTypes.map((t) => (
                   <div
@@ -292,6 +309,19 @@ export default function AdminDashboard() {
                           )
                         }
                         className="w-20 border border-ink/20 rounded-sm px-2 py-1"
+                      />
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                      Max samtidigt / kvart
+                      <input
+                        type="number"
+                        min={0}
+                        placeholder="ingen gräns"
+                        defaultValue={t.maxPerSlot ?? ""}
+                        onBlur={(e) =>
+                          updateTableTypeMaxPerSlot(t.id, e.target.value)
+                        }
+                        className="w-28 border border-ink/20 rounded-sm px-2 py-1"
                       />
                     </label>
                   </div>

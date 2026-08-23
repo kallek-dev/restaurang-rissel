@@ -139,7 +139,10 @@ export async function getAvailabilityForDate(
         const bookedOfType = slotBookings.filter(
           (b) => b.tableTypeId === tt.id
         ).length;
-        tableAvailability[tt.id] = Math.max(0, tt.count - bookedOfType);
+        const byStock = tt.count - bookedOfType;
+        const byOwnCap =
+          tt.maxPerSlot !== undefined ? tt.maxPerSlot - bookedOfType : Infinity;
+        tableAvailability[tt.id] = Math.max(0, Math.min(byStock, byOwnCap));
       }
 
       const full =
@@ -209,7 +212,13 @@ async function checkSlotAndPickTableType(
     const bookedOfType = existing.filter(
       (b) => b.tableTypeId === tt.id
     ).length;
-    remainingByType[tt.id] = Math.max(0, tt.count - bookedOfType);
+    const byStock = tt.count - bookedOfType;
+    // Om admin satt en egen "max per kvart" för den här bordstypen
+    // (t.ex. för att inte fler än 2 fyrbord ska sitta ner samtidigt),
+    // gäller den gränsen utöver hur många bord som faktiskt finns.
+    const byOwnCap =
+      tt.maxPerSlot !== undefined ? tt.maxPerSlot - bookedOfType : Infinity;
+    remainingByType[tt.id] = Math.max(0, Math.min(byStock, byOwnCap));
   }
 
   const tableType = pickTableType(

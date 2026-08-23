@@ -6,6 +6,12 @@ export type TableType = {
   seats: number;
   minPeople: number;
   count: number;
+  // Valfri: max antal bord av DEN HÄR typen som får sitta ner samtidigt
+  // i samma kvart, utöver den generella maxTablesPerSlot-gränsen.
+  // Lämnas den odefinierad gäller ingen extra begränsning för typen.
+  // Används t.ex. för att sprida ut fyrbord över fler kvartar, så inte
+  // för många stora sällskap dyker upp samtidigt.
+  maxPerSlot?: number;
 };
 
 export type AppSettings = {
