@@ -39,11 +39,10 @@ model Settings {
   // Intervall mellan bokningsbara tider, i minuter.
   slotIntervalMinutes Int @default(15)
 
-  // Max antal bord som får sitta ner under samma kvart.
+  // Max antal bord som får sitta ner under samma kvart, oavsett typ.
+  // Finjustering per bordstyp (t.ex. max 2 fyrbord samtidigt) görs i
+  // stället via maxPerSlot på respektive bordstyp, se tableTypesJson.
   maxTablesPerSlot Int @default(4)
-
-  // Max antal sällskap (bokningar) per kvart.
-  maxPartiesPerSlot Int @default(4)
 
   // Bordstyper, t.ex.
   // [{"id":"small","label":"Bord för 2","seats":2,"minPeople":1,"count":6},
@@ -88,6 +87,13 @@ model Booking {
   // confirmed | cancelled
   status String @default("confirmed")
 
+  // Fritext-anteckning från admin, t.ex. "Bord 3+4 ihopskjutna".
+  note String @default("")
+
+  // True om bokningen skapades av admin (manuellt, telefon, eller
+  // inbokning av en förfrågan) istället för av gästen själv online.
+  createdByAdmin Boolean @default(false)
+
   // Slumpad hemlighet i avbokningslänken i mailet — gör att en gäst kan
   // avboka sig själv utan inloggning, utan att kunna gissa sig till
   // andra gästers bokningar. Nullable så att kolumnen kan läggas till
@@ -101,4 +107,30 @@ model Booking {
 
   @@index([date, sitting])
   @@index([date, status])
+}
+
+// Förfrågan från gäster med sällskap större än maxOnlinePartySize —
+// dessa bokas inte automatiskt (kräver oftast särskild bordslösning)
+// utan hanteras av admin under fliken "Förfrågningar".
+model GroupRequest {
+  id String @id @default(cuid())
+
+  date      String // önskat datum
+  sitting   String // önskad sittning, eller fritext om osäker
+  partySize Int
+
+  name    String
+  email   String
+  phone   String
+  message String @default("")
+
+  // pending | handled
+  status String @default("pending")
+
+  // Om admin bokat in förfrågan som en riktig bokning, kopplingen dit.
+  linkedBookingId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([status])
 }

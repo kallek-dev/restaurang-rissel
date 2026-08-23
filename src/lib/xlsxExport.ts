@@ -20,6 +20,8 @@ export async function buildBookingsWorkbook(
     { header: "Telefon", key: "phone", width: 16 },
     { header: "Mail", key: "email", width: 28 },
     { header: "Allergier / önskemål", key: "allergies", width: 32 },
+    { header: "Anteckning", key: "note", width: 24 },
+    { header: "Skapad av admin", key: "createdByAdmin", width: 14 },
     { header: "Status", key: "status", width: 12 },
     { header: "Bokad", key: "createdAt", width: 20 },
   ];
@@ -42,6 +44,8 @@ export async function buildBookingsWorkbook(
       phone: b.phone,
       email: b.email,
       allergies: b.allergies,
+      note: b.note,
+      createdByAdmin: b.createdByAdmin ? "Ja" : "",
       status: b.status,
       createdAt: b.createdAt.toISOString().slice(0, 16).replace("T", " "),
     });

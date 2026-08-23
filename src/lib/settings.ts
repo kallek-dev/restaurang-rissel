@@ -22,7 +22,6 @@ export type AppSettings = {
   sittingWindowMinutes: number;
   slotIntervalMinutes: number;
   maxTablesPerSlot: number;
-  maxPartiesPerSlot: number;
   tableTypes: TableType[];
   maxOnlinePartySize: number;
   contactEmail: string;
@@ -35,6 +34,7 @@ export type PublicSettings = Pick<
   AppSettings,
   | "systemOpen"
   | "openDays"
+  | "sittings"
   | "maxOnlinePartySize"
   | "contactEmail"
   | "retentionMonths"
@@ -49,7 +49,6 @@ function toAppSettings(row: {
   sittingWindowMinutes: number;
   slotIntervalMinutes: number;
   maxTablesPerSlot: number;
-  maxPartiesPerSlot: number;
   tableTypesJson: string;
   maxOnlinePartySize: number;
   contactEmail: string;
@@ -64,7 +63,6 @@ function toAppSettings(row: {
     sittingWindowMinutes: row.sittingWindowMinutes,
     slotIntervalMinutes: row.slotIntervalMinutes,
     maxTablesPerSlot: row.maxTablesPerSlot,
-    maxPartiesPerSlot: row.maxPartiesPerSlot,
     tableTypes: JSON.parse(row.tableTypesJson),
     maxOnlinePartySize: row.maxOnlinePartySize,
     contactEmail: row.contactEmail,
@@ -86,6 +84,7 @@ export function toPublicSettings(settings: AppSettings): PublicSettings {
   return {
     systemOpen: settings.systemOpen,
     openDays: settings.openDays,
+    sittings: settings.sittings,
     maxOnlinePartySize: settings.maxOnlinePartySize,
     contactEmail: settings.contactEmail,
     retentionMonths: settings.retentionMonths,
@@ -100,7 +99,6 @@ export type SettingsUpdateInput = Partial<{
   sittingWindowMinutes: number;
   slotIntervalMinutes: number;
   maxTablesPerSlot: number;
-  maxPartiesPerSlot: number;
   tableTypes: TableType[];
   maxOnlinePartySize: number;
   contactEmail: string;
@@ -125,8 +123,6 @@ export async function updateSettings(
     data.slotIntervalMinutes = input.slotIntervalMinutes;
   if (input.maxTablesPerSlot !== undefined)
     data.maxTablesPerSlot = input.maxTablesPerSlot;
-  if (input.maxPartiesPerSlot !== undefined)
-    data.maxPartiesPerSlot = input.maxPartiesPerSlot;
   if (input.tableTypes !== undefined)
     data.tableTypesJson = JSON.stringify(input.tableTypes);
   if (input.maxOnlinePartySize !== undefined)

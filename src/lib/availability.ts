@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { getSettings, AppSettings, TableType } from "./settings";
-import { sendBookingConfirmation, sendBookingUpdated } from "./email";
+import { sendBookingConfirmation, sendBookingUpdated, sendGroupRequestReceived } from "./email";
 import { formatInTimeZone } from "date-fns-tz";
 
 const TIMEZONE = "Europe/Stockholm";
@@ -147,7 +147,6 @@ export async function getAvailabilityForDate(
 
       const full =
         tablesBooked >= settings.maxTablesPerSlot ||
-        tablesBooked >= settings.maxPartiesPerSlot ||
         Object.values(tableAvailability).every((n) => n <= 0);
 
       return { time, full };
@@ -200,11 +199,6 @@ async function checkSlotAndPickTableType(
 
   if (existing.length >= settings.maxTablesPerSlot) {
     throw new BookingError("Den tiden är tyvärr fullbokad. Välj en annan tid.");
-  }
-  if (existing.length >= settings.maxPartiesPerSlot) {
-    throw new BookingError(
-      "Max antal sällskap för den tiden är nått. Välj en annan tid."
-    );
   }
 
   const remainingByType: Record<string, number> = {};
@@ -414,4 +408,150 @@ export async function updateBookingByToken(
   }
 
   return booking;
+}
+
+export type AdminCreateBookingInput = {
+  date: string;
+  timeSlot: string;
+  partySize: number;
+  name: string;
+  email: string;
+  phone: string;
+  allergies?: string;
+  allergyConsent?: boolean;
+  note?: string;
+  // Hoppar över den vanliga plats- och kapacitetskontrollen helt —
+  // för sällskap som behöver en särskild bordslösning (t.ex.
+  // ihopskjutna bord) som det automatiska systemet inte känner till.
+  manual?: boolean;
+};
+
+// Admin kan boka in gäster direkt (telefonsamtal, eller en förfrågan
+// från ett stort sällskap som bokats in). Till skillnad från
+// createBooking gäller INTE maxOnlinePartySize här — admin får boka in
+// sällskap av vilken storlek som helst.
+export async function createBookingAsAdmin(input: AdminCreateBookingInput) {
+  const settings = await getSettings();
+  const allergies = (input.allergies ?? "").trim();
+  const note = (input.note ?? "").trim();
+
+  if (input.partySize < 1) {
+    throw new BookingError("Antal personer måste vara minst 1.");
+  }
+  if (allergies.length > 0 && !input.allergyConsent) {
+    throw new BookingError(
+      "Bocka i samtycket om allergier ska sparas."
+    );
+  }
+
+  let booking;
+
+  if (input.manual) {
+    // Ingen kapacitetskontroll, inget automatiskt bordsval — admin
+    // ansvarar själv för att platsen faktiskt finns (t.ex. ihopskjutna
+    // bord). Sittningen sätts om tiden råkar matcha en vanlig sittning,
+    // annars "manuell".
+    const sitting = findSittingForTime(input.timeSlot, settings) ?? "manuell";
+    booking = await prisma.booking.create({
+      data: {
+        date: input.date,
+        sitting,
+        timeSlot: input.timeSlot,
+        partySize: input.partySize,
+        tableTypeId: "manuell",
+        name: input.name.trim(),
+        email: input.email.trim(),
+        phone: input.phone.trim(),
+        allergies,
+        allergyConsent: allergies.length > 0 ? Boolean(input.allergyConsent) : false,
+        note,
+        createdByAdmin: true,
+        cancelToken: crypto.randomBytes(20).toString("hex"),
+      },
+    });
+  } else {
+    if (!isDateOpen(input.date, settings)) {
+      throw new BookingError("Det går inte att boka den här dagen.");
+    }
+    const sitting = findSittingForTime(input.timeSlot, settings);
+    if (!sitting) {
+      throw new BookingError("Ogiltig tid.");
+    }
+
+    booking = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const tableType = await checkSlotAndPickTableType(
+        tx,
+        input.date,
+        input.timeSlot,
+        input.partySize,
+        settings
+      );
+      return tx.booking.create({
+        data: {
+          date: input.date,
+          sitting,
+          timeSlot: input.timeSlot,
+          partySize: input.partySize,
+          tableTypeId: tableType.id,
+          name: input.name.trim(),
+          email: input.email.trim(),
+          phone: input.phone.trim(),
+          allergies,
+          allergyConsent: allergies.length > 0 ? Boolean(input.allergyConsent) : false,
+          note,
+          createdByAdmin: true,
+          cancelToken: crypto.randomBytes(20).toString("hex"),
+        },
+      });
+    });
+  }
+
+  try {
+    await sendBookingConfirmation(booking, settings);
+  } catch (err) {
+    console.error("Kunde inte skicka bekräftelsemail:", err);
+  }
+
+  return booking;
+}
+
+export type CreateGroupRequestInput = {
+  date: string;
+  sitting: string;
+  partySize: number;
+  name: string;
+  email: string;
+  phone: string;
+  message?: string;
+};
+
+// Förfrågan från sällskap större än maxOnlinePartySize. Skapar ingen
+// bokning direkt — admin bokar in det manuellt via "Förfrågningar" i
+// adminpanelen, se createBookingAsAdmin.
+export async function createGroupRequest(input: CreateGroupRequestInput) {
+  if (input.partySize < 1) {
+    throw new BookingError("Antal personer måste vara minst 1.");
+  }
+
+  const settings = await getSettings();
+
+  const request = await prisma.groupRequest.create({
+    data: {
+      date: input.date,
+      sitting: input.sitting,
+      partySize: input.partySize,
+      name: input.name.trim(),
+      email: input.email.trim(),
+      phone: input.phone.trim(),
+      message: (input.message ?? "").trim(),
+    },
+  });
+
+  try {
+    await sendGroupRequestReceived(request, settings);
+  } catch (err) {
+    console.error("Kunde inte skicka mottagningsbekräftelse:", err);
+  }
+
+  return request;
 }

@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import type { Booking } from "@prisma/client";
+import type { Booking, GroupRequest } from "@prisma/client";
 import type { AppSettings } from "./settings";
 
 function getResend(): Resend | null {
@@ -174,6 +174,36 @@ export async function sendBookingReminder(
     from: fromAddress(settings),
     to: booking.email,
     subject: `Påminnelse: bord imorgon kl ${booking.timeSlot}`,
+    html,
+  });
+}
+
+export async function sendGroupRequestReceived(
+  request: GroupRequest,
+  settings: AppSettings
+) {
+  const resend = getResend();
+  if (!resend) return;
+
+  const html = wrapTemplate(
+    "Vi har tagit emot er förfrågan",
+    `
+      <p>Hej ${escapeHtml(request.name)},</p>
+      <p>Tack för er förfrågan om bord hos ${escapeHtml(settings.restaurantName)}. Eftersom ni är fler än vad som bokas direkt online tittar vi manuellt på bästa lösning innan vi bekräftar.</p>
+      <table style="width:100%; border-collapse: collapse; margin: 16px 0;">
+        <tr><td style="padding:4px 0; color:#647459;">Önskad dag</td><td style="padding:4px 0; text-align:right; font-weight:600;">${formatDateSwedish(request.date)}</td></tr>
+        <tr><td style="padding:4px 0; color:#647459;">Önskad sittning</td><td style="padding:4px 0; text-align:right; font-weight:600;">${escapeHtml(request.sitting)}</td></tr>
+        <tr><td style="padding:4px 0; color:#647459;">Antal personer</td><td style="padding:4px 0; text-align:right; font-weight:600;">${request.partySize}</td></tr>
+      </table>
+      <p>Vi hör av oss så snart vi kan för att bekräfta tid. Har ni frågor under tiden, svara bara på det här mailet eller kontakta oss på ${settings.contactEmail}.</p>
+    `,
+    settings
+  );
+
+  await resend.emails.send({
+    from: fromAddress(settings),
+    to: request.email,
+    subject: `Vi har tagit emot er förfrågan — ${formatDateSwedish(request.date)}`,
     html,
   });
 }

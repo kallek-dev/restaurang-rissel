@@ -25,10 +25,10 @@ const updateSchema = z.object({
   sittingWindowMinutes: z.number().int().min(15).max(480).optional(),
   slotIntervalMinutes: z.number().int().min(5).max(120).optional(),
   maxTablesPerSlot: z.number().int().min(1).max(100).optional(),
-  maxPartiesPerSlot: z.number().int().min(1).max(100).optional(),
   tableTypes: z.array(tableTypeSchema).optional(),
   maxOnlinePartySize: z.number().int().min(1).max(100).optional(),
   contactEmail: z.string().email().optional(),
+  retentionMonths: z.number().int().min(1).max(120).optional(),
   restaurantName: z.string().min(1).max(200).optional(),
 });
 

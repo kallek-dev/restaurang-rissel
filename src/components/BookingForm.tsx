@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import TicketPreview from "./TicketPreview";
 import Calendar from "./Calendar";
 import SlotPicker from "./SlotPicker";
+import GroupRequestForm from "./GroupRequestForm";
 
 type PublicSettings = {
   systemOpen: boolean;
   openDays: number[];
+  sittings: string[];
   maxOnlinePartySize: number;
   contactEmail: string;
   retentionMonths: number;
@@ -298,20 +300,11 @@ export default function BookingForm() {
             </button>
           </div>
           {largeParty && (
-            <div className="mt-3 border border-gold/40 bg-gold/10 rounded-sm p-4 text-sm">
-              <p>
-                Stora sällskap (fler än {maxOnline} personer) bokas via mail
-                istället för här i systemet.
-              </p>
-              <a
-                className="inline-block mt-2 underline decoration-gold font-medium"
-                href={`mailto:${settings.contactEmail}?subject=${encodeURIComponent(
-                  "Bokning för stort sällskap"
-                )}`}
-              >
-                Maila oss på {settings.contactEmail}
-              </a>
-            </div>
+            <GroupRequestForm
+              defaultDate={selectedDate}
+              sittings={settings.sittings}
+              maxOnline={maxOnline}
+            />
           )}
         </section>
 
