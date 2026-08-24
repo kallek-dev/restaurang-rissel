@@ -1,8 +1,25 @@
+import Image from "next/image";
 import BookingForm from "@/components/BookingForm";
 
 export default function Home() {
   return (
     <main className="min-h-screen">
+      <div className="relative w-full h-[220px] sm:h-[320px] overflow-hidden">
+        <Image
+          src="/franska-angkvarnen.jpg"
+          alt="Historiskt foto av Franska Ångkvarnen i Ystad, grundad 1864"
+          fill
+          priority
+          className="object-cover"
+          sizes="100vw"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-ink/70 via-ink/10 to-transparent" />
+        <p className="absolute bottom-2 right-3 text-[11px] text-paper/80 font-mono">
+          Franska Ångkvarnen, Ystad — Risselmagasinet är den enda byggnad
+          som finns kvar idag. Foto: Samuel Moses Marcus, ca 1860–70-tal.
+        </p>
+      </div>
+
       <header className="border-b border-ink/10">
         <div className="max-w-5xl mx-auto px-6 py-10">
           <p className="font-mono text-xs uppercase tracking-[0.3em] text-sage">
