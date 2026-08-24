@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import SettingsTab, { Settings } from "./SettingsTab";
 import TodayTab from "./TodayTab";
-import BookingsTab from "./BookingsTab";
+import BookingsTab, { Booking } from "./BookingsTab";
 import RequestsTab from "./RequestsTab";
 import ManualBookingModal, { ManualBookingPrefill } from "./ManualBookingModal";
 
@@ -35,6 +35,7 @@ export default function AdminDashboard() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalPrefill, setModalPrefill] = useState<ManualBookingPrefill | null>(null);
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -71,11 +72,19 @@ export default function AdminDashboard() {
   }
 
   function openNewBooking(date?: string) {
+    setEditingBooking(null);
     setModalPrefill(date ? { date } : null);
     setModalOpen(true);
   }
 
+  function openEditBooking(booking: Booking) {
+    setEditingBooking(booking);
+    setModalPrefill(null);
+    setModalOpen(true);
+  }
+
   function openBookIn(request: GroupRequest) {
+    setEditingBooking(null);
     setModalPrefill({
       date: request.date,
       name: request.name,
@@ -86,6 +95,11 @@ export default function AdminDashboard() {
       groupRequestId: request.id,
     });
     setModalOpen(true);
+  }
+
+  function closeModal() {
+    setModalOpen(false);
+    setEditingBooking(null);
   }
 
   function handleBooked() {
@@ -117,7 +131,12 @@ export default function AdminDashboard() {
 
       {tab === "today" && <TodayTab key={`today-${refreshKey}`} onNewBooking={openNewBooking} />}
       {tab === "bookings" && (
-        <BookingsTab key={`bookings-${refreshKey}`} onNewBooking={openNewBooking} />
+        <BookingsTab
+          key={`bookings-${refreshKey}`}
+          settings={settings}
+          onNewBooking={openNewBooking}
+          onEditBooking={openEditBooking}
+        />
       )}
       {tab === "requests" && (
         <RequestsTab key={`requests-${refreshKey}`} onBookIn={openBookIn} />
@@ -134,7 +153,8 @@ export default function AdminDashboard() {
       {modalOpen && (
         <ManualBookingModal
           prefill={modalPrefill}
-          onClose={() => setModalOpen(false)}
+          editingBooking={editingBooking}
+          onClose={closeModal}
           onBooked={handleBooked}
         />
       )}

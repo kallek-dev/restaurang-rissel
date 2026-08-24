@@ -106,9 +106,14 @@ export type DateAvailability = {
 // Returnerar tillgängliga tider grupperade under respektive sittning,
 // så gästen väljer exakt tid men ser den grupperad under t.ex.
 // "11:30-passet" / "12:30-passet" i gränssnittet.
+//
+// Om partySize anges räknas en tid som fullbokad om INTE en bordstyp
+// som rymmer just det sällskapet har plats kvar (korrekt per sällskap).
+// Utan partySize räknas en tid som fullbokad först när INGEN bordstyp
+// alls har plats kvar (grovare, används innan gästen valt antal).
 export async function getAvailabilityForDate(
   dateStr: string,
-  excludeBookingId?: string
+  options?: { excludeBookingId?: string; partySize?: number }
 ): Promise<DateAvailability> {
   const settings = await getSettings();
   const openSittings = getOpenSittings(dateStr, settings);
@@ -122,10 +127,18 @@ export async function getAvailabilityForDate(
       where: {
         date: dateStr,
         status: "confirmed",
-        ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}),
+        ...(options?.excludeBookingId
+          ? { id: { not: options.excludeBookingId } }
+          : {}),
       },
       select: { timeSlot: true, tableTypeId: true },
     });
+
+  const relevantTypes = settings.tableTypes.filter((tt) =>
+    options?.partySize
+      ? options.partySize >= tt.minPeople && options.partySize <= tt.seats
+      : true
+  );
 
   const sittingGroups: SittingGroup[] = openSittings.map((sitting) => {
     const subSlots = generateSubSlotsForSitting(sitting, settings);
@@ -135,7 +148,7 @@ export async function getAvailabilityForDate(
       const tablesBooked = slotBookings.length;
 
       const tableAvailability: Record<string, number> = {};
-      for (const tt of settings.tableTypes) {
+      for (const tt of relevantTypes) {
         const bookedOfType = slotBookings.filter(
           (b) => b.tableTypeId === tt.id
         ).length;
@@ -147,6 +160,7 @@ export async function getAvailabilityForDate(
 
       const full =
         tablesBooked >= settings.maxTablesPerSlot ||
+        relevantTypes.length === 0 ||
         Object.values(tableAvailability).every((n) => n <= 0);
 
       return { time, full };
@@ -156,6 +170,61 @@ export async function getAvailabilityForDate(
   });
 
   return { date: dateStr, open: true, sittingGroups };
+}
+
+export type AdminSlotCapacity = {
+  time: string;
+  tablesBooked: number;
+  tableAvailability: { id: string; label: string; booked: number; total: number }[];
+};
+
+export type AdminSittingCapacity = {
+  sitting: string;
+  slots: AdminSlotCapacity[];
+};
+
+export type AdminDayCapacity = {
+  date: string;
+  open: boolean;
+  sittingGroups: AdminSittingCapacity[];
+};
+
+// Full numerisk kapacitetsöversikt för admin (inte gästsidan) — exakt
+// antal bokade/lediga bord per typ och tid, för att snabbt se dagens
+// läge utan att räkna manuellt i bokningslistan.
+export async function getAdminCapacityForDate(
+  dateStr: string
+): Promise<AdminDayCapacity> {
+  const settings = await getSettings();
+  // Kapacitetsöversikten ska funka även för dagar som är formellt
+  // "stängda" (t.ex. om admin manuellt bokat in något ändå), så vi
+  // frågar inte isDateOpen här, bara vilka sittningar som är
+  // konfigurerade.
+  const sittings = settings.sittings;
+
+  const bookings: { timeSlot: string; tableTypeId: string }[] =
+    await prisma.booking.findMany({
+      where: { date: dateStr, status: "confirmed" },
+      select: { timeSlot: true, tableTypeId: true },
+    });
+
+  const sittingGroups: AdminSittingCapacity[] = sittings.map((sitting) => {
+    const subSlots = generateSubSlotsForSitting(sitting, settings);
+
+    const slots: AdminSlotCapacity[] = subSlots.map((time) => {
+      const slotBookings = bookings.filter((b) => b.timeSlot === time);
+      const tableAvailability = settings.tableTypes.map((tt) => {
+        const booked = slotBookings.filter((b) => b.tableTypeId === tt.id).length;
+        const total = tt.maxPerSlot !== undefined ? Math.min(tt.count, tt.maxPerSlot) : tt.count;
+        return { id: tt.id, label: tt.label, booked, total };
+      });
+      return { time, tablesBooked: slotBookings.length, tableAvailability };
+    });
+
+    return { sitting, slots };
+  });
+
+  return { date: dateStr, open: settings.openDays.length > 0, sittingGroups };
 }
 
 // Väljer minsta bordstyp som rymmer sällskapet och som har lediga bord kvar.
@@ -554,4 +623,109 @@ export async function createGroupRequest(input: CreateGroupRequestInput) {
   }
 
   return request;
+}
+
+export type AdminUpdateBookingInput = {
+  date: string;
+  timeSlot: string;
+  partySize: number;
+  name: string;
+  email: string;
+  phone: string;
+  allergies?: string;
+  allergyConsent?: boolean;
+  note?: string;
+  // Hoppar över kapacitetskontrollen helt, samma som vid manuell
+  // nybokning — för ändringar som annars skulle blockeras (t.ex. att
+  // byta ett vanligt bord mot en särskild lösning för ett stort sällskap).
+  manual?: boolean;
+};
+
+// Admin redigerar en befintlig bokning (vilket fält som helst), utan
+// krav på gästens cancelToken eftersom admin redan är autentiserad.
+// Skickar samma ändringsmail till gästen som vid självbetjänad ändring.
+export async function updateBookingAsAdmin(
+  id: string,
+  input: AdminUpdateBookingInput
+) {
+  const existing = await prisma.booking.findUnique({ where: { id } });
+  if (!existing) {
+    throw new BookingError("Bokningen kunde inte hittas.");
+  }
+
+  const settings = await getSettings();
+  const allergies = (input.allergies ?? "").trim();
+  const note = (input.note ?? "").trim();
+
+  if (input.partySize < 1) {
+    throw new BookingError("Antal personer måste vara minst 1.");
+  }
+  if (allergies.length > 0 && !input.allergyConsent) {
+    throw new BookingError("Bocka i samtycket om allergier ska sparas.");
+  }
+
+  let booking;
+
+  if (input.manual) {
+    const sitting = findSittingForTime(input.timeSlot, settings) ?? "manuell";
+    booking = await prisma.booking.update({
+      where: { id },
+      data: {
+        date: input.date,
+        sitting,
+        timeSlot: input.timeSlot,
+        partySize: input.partySize,
+        tableTypeId: "manuell",
+        name: input.name.trim(),
+        email: input.email.trim(),
+        phone: input.phone.trim(),
+        allergies,
+        allergyConsent: allergies.length > 0 ? Boolean(input.allergyConsent) : false,
+        note,
+        reminderSentAt: null,
+      },
+    });
+  } else {
+    const sitting = findSittingForTime(input.timeSlot, settings);
+    if (!sitting) {
+      throw new BookingError("Ogiltig tid.");
+    }
+
+    booking = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const tableType = await checkSlotAndPickTableType(
+        tx,
+        input.date,
+        input.timeSlot,
+        input.partySize,
+        settings,
+        id
+      );
+
+      return tx.booking.update({
+        where: { id },
+        data: {
+          date: input.date,
+          sitting,
+          timeSlot: input.timeSlot,
+          partySize: input.partySize,
+          tableTypeId: tableType.id,
+          name: input.name.trim(),
+          email: input.email.trim(),
+          phone: input.phone.trim(),
+          allergies,
+          allergyConsent: allergies.length > 0 ? Boolean(input.allergyConsent) : false,
+          note,
+          reminderSentAt: null,
+        },
+      });
+    });
+  }
+
+  try {
+    await sendBookingUpdated(booking, settings);
+  } catch (err) {
+    console.error("Kunde inte skicka ändringsmail:", err);
+  }
+
+  return booking;
 }

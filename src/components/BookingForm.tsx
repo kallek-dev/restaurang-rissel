@@ -88,11 +88,13 @@ export default function BookingForm() {
     }
     setLoadingAvailability(true);
     setSelectedTime(null);
-    fetch(`/api/availability?date=${selectedDate}`)
+    const params = new URLSearchParams({ date: selectedDate });
+    if (!largeParty) params.set("partySize", String(partySize));
+    fetch(`/api/availability?${params.toString()}`)
       .then((r) => r.json())
       .then((data: DateAvailability) => setAvailability(data))
       .finally(() => setLoadingAvailability(false));
-  }, [selectedDate]);
+  }, [selectedDate, partySize, largeParty]);
 
   const maxOnline = settings?.maxOnlinePartySize ?? 4;
   const partySizeOptions = Array.from({ length: maxOnline }, (_, i) => i + 1);
@@ -286,28 +288,9 @@ export default function BookingForm() {
           </p>
         </section>
 
-        {/* Tid */}
-        <section>
-          <SectionLabel step="02" title="Välj tid" />
-          {!selectedDate && (
-            <p className="text-sm text-sage">Välj en dag först.</p>
-          )}
-          {selectedDate && loadingAvailability && (
-            <p className="text-sm text-sage font-mono">Hämtar lediga tider…</p>
-          )}
-          {selectedDate && !loadingAvailability && availability && (
-            <SlotPicker
-              groups={availability.sittingGroups}
-              selectedTime={selectedTime}
-              onSelect={setSelectedTime}
-              disabled={largeParty}
-            />
-          )}
-        </section>
-
         {/* Antal personer */}
         <section>
-          <SectionLabel step="03" title="Antal personer" />
+          <SectionLabel step="02" title="Antal personer" />
           <div className="flex flex-wrap gap-2">
             {partySizeOptions.map((n) => (
               <button
@@ -336,6 +319,26 @@ export default function BookingForm() {
             />
           )}
         </section>
+
+        {/* Tid */}
+        {!largeParty && (
+          <section>
+            <SectionLabel step="03" title="Välj tid" />
+            {!selectedDate && (
+              <p className="text-sm text-sage">Välj en dag först.</p>
+            )}
+            {selectedDate && loadingAvailability && (
+              <p className="text-sm text-sage font-mono">Hämtar lediga tider…</p>
+            )}
+            {selectedDate && !loadingAvailability && availability && (
+              <SlotPicker
+                groups={availability.sittingGroups}
+                selectedTime={selectedTime}
+                onSelect={setSelectedTime}
+              />
+            )}
+          </section>
+        )}
 
         {/* Kontaktuppgifter */}
         <section>

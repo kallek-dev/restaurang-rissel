@@ -16,6 +16,14 @@ type Booking = {
   status: string;
 };
 
+type CapacitySlot = {
+  time: string;
+  tablesBooked: number;
+  tableAvailability: { id: string; label: string; booked: number; total: number }[];
+};
+type CapacitySitting = { sitting: string; slots: CapacitySlot[] };
+type CapacityData = { date: string; open: boolean; sittingGroups: CapacitySitting[] };
+
 type Props = {
   onNewBooking: (date: string) => void;
 };
@@ -44,6 +52,8 @@ export default function TodayTab({ onNewBooking }: Props) {
   const [date, setDate] = useState(todayISO());
   const [bookings, setBookings] = useState<Booking[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [capacity, setCapacity] = useState<CapacityData | null>(null);
+  const [showCapacity, setShowCapacity] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -51,6 +61,9 @@ export default function TodayTab({ onNewBooking }: Props) {
       .then((r) => r.json())
       .then(setBookings)
       .finally(() => setLoading(false));
+    fetch(`/api/admin/availability?date=${date}`)
+      .then((r) => r.json())
+      .then(setCapacity);
   }, [date]);
 
   async function cancelBooking(id: string) {
@@ -106,6 +119,51 @@ export default function TodayTab({ onNewBooking }: Props) {
         >
           + Ny bokning
         </button>
+      </div>
+
+      <div className="mb-6">
+        <button
+          onClick={() => setShowCapacity((v) => !v)}
+          className="text-sm font-display uppercase tracking-wide text-sage hover:text-ink flex items-center gap-2"
+        >
+          Bordsläge {showCapacity ? "▲" : "▼"}
+        </button>
+        {showCapacity && capacity && (
+          <div className="mt-3 border border-ink/10 rounded-sm p-4 space-y-4">
+            {capacity.sittingGroups.map((sg) => (
+              <div key={sg.sitting}>
+                <p className="text-xs uppercase tracking-widest text-sage mb-2">
+                  {sg.sitting}-passet
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="text-sm">
+                    <tbody>
+                      {sg.slots.map((slot) => (
+                        <tr key={slot.time}>
+                          <td className="font-mono pr-4 py-1">{slot.time}</td>
+                          {slot.tableAvailability.map((t) => (
+                            <td key={t.id} className="pr-4 py-1 text-sage">
+                              {t.label}:{" "}
+                              <span
+                                className={
+                                  t.booked >= t.total
+                                    ? "text-brick font-medium"
+                                    : "text-ink"
+                                }
+                              >
+                                {t.booked}/{t.total}
+                              </span>
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {loading && <p className="text-sage font-mono text-sm">Laddar…</p>}

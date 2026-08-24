@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import SlotPicker from "@/components/SlotPicker";
+import type { Booking } from "./BookingsTab";
 
 type SlotAvailability = { time: string; full: boolean };
 type SittingGroup = { sitting: string; slots: SlotAvailability[] };
@@ -19,6 +20,7 @@ export type ManualBookingPrefill = {
 
 type Props = {
   prefill: ManualBookingPrefill | null;
+  editingBooking?: Booking | null;
   onClose: () => void;
   onBooked: () => void;
 };
@@ -26,18 +28,24 @@ type Props = {
 const fieldClass =
   "w-full bg-white border border-ink/15 rounded-sm px-3 py-2 text-sm text-ink";
 
-export default function ManualBookingModal({ prefill, onClose, onBooked }: Props) {
-  const [date, setDate] = useState(prefill?.date ?? "");
-  const [manual, setManual] = useState(Boolean(prefill?.groupRequestId));
-  const [timeSlot, setTimeSlot] = useState<string | null>(null);
-  const [manualTime, setManualTime] = useState("12:00");
-  const [partySize, setPartySize] = useState(prefill?.partySize ?? 2);
-  const [name, setName] = useState(prefill?.name ?? "");
-  const [email, setEmail] = useState(prefill?.email ?? "");
-  const [phone, setPhone] = useState(prefill?.phone ?? "");
-  const [allergies, setAllergies] = useState("");
-  const [allergyConsent, setAllergyConsent] = useState(false);
-  const [note, setNote] = useState(prefill?.message ?? "");
+export default function ManualBookingModal({ prefill, editingBooking, onClose, onBooked }: Props) {
+  const isEditing = Boolean(editingBooking);
+
+  const [date, setDate] = useState(editingBooking?.date ?? prefill?.date ?? "");
+  const [manual, setManual] = useState(
+    editingBooking ? editingBooking.tableTypeId === "manuell" : Boolean(prefill?.groupRequestId)
+  );
+  const [timeSlot, setTimeSlot] = useState<string | null>(editingBooking?.timeSlot ?? null);
+  const [manualTime, setManualTime] = useState(editingBooking?.timeSlot ?? "12:00");
+  const [partySize, setPartySize] = useState(editingBooking?.partySize ?? prefill?.partySize ?? 2);
+  const [name, setName] = useState(editingBooking?.name ?? prefill?.name ?? "");
+  const [email, setEmail] = useState(editingBooking?.email ?? prefill?.email ?? "");
+  const [phone, setPhone] = useState(editingBooking?.phone ?? prefill?.phone ?? "");
+  const [allergies, setAllergies] = useState(editingBooking?.allergies ?? "");
+  const [allergyConsent, setAllergyConsent] = useState(
+    Boolean(editingBooking?.allergies)
+  );
+  const [note, setNote] = useState(editingBooking?.note ?? prefill?.message ?? "");
   const [repeatWeeks, setRepeatWeeks] = useState(1);
 
   const [availability, setAvailability] = useState<DateAvailability | null>(null);
@@ -56,12 +64,14 @@ export default function ManualBookingModal({ prefill, onClose, onBooked }: Props
       return;
     }
     setLoadingAvailability(true);
-    setTimeSlot(null);
-    fetch(`/api/availability?date=${date}`)
+    setTimeSlot((cur) => (isEditing && cur === editingBooking?.timeSlot ? cur : null));
+    const params = new URLSearchParams({ date, partySize: String(partySize) });
+    if (editingBooking) params.set("exclude", editingBooking.id);
+    fetch(`/api/availability?${params.toString()}`)
       .then((r) => r.json())
       .then(setAvailability)
       .finally(() => setLoadingAvailability(false));
-  }, [date, manual]);
+  }, [date, manual, partySize]);
 
   const effectiveTime = manual ? manualTime : timeSlot;
   const needsAllergyConsent = allergies.trim().length > 0;
@@ -79,6 +89,37 @@ export default function ManualBookingModal({ prefill, onClose, onBooked }: Props
     if (!canSubmit || !effectiveTime) return;
     setSubmitting(true);
     setError(null);
+
+    if (isEditing && editingBooking) {
+      try {
+        const res = await fetch(`/api/admin/bookings/${editingBooking.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            date,
+            timeSlot: effectiveTime,
+            partySize,
+            name,
+            email,
+            phone,
+            allergies,
+            allergyConsent,
+            note,
+            manual,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Kunde inte spara ändringen.");
+        onBooked();
+        onClose();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Något gick fel.");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     try {
       const res = await fetch("/api/admin/bookings", {
         method: "POST",
@@ -115,7 +156,9 @@ export default function ManualBookingModal({ prefill, onClose, onBooked }: Props
     <div className="fixed inset-0 bg-ink/40 flex items-center justify-center p-4 z-50">
       <div className="bg-paper max-w-lg w-full rounded-sm border border-ink/10 p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-display uppercase text-lg">Boka in manuellt</h2>
+          <h2 className="font-display uppercase text-lg">
+            {isEditing ? "Redigera bokning" : "Boka in manuellt"}
+          </h2>
           <button onClick={onClose} className="text-sage hover:text-ink text-sm">
             Stäng ✕
           </button>
@@ -294,7 +337,7 @@ export default function ManualBookingModal({ prefill, onClose, onBooked }: Props
               </label>
             </div>
 
-            {!prefill?.groupRequestId && (
+            {!isEditing && !prefill?.groupRequestId && (
               <label className="block text-sm max-w-[220px]">
                 <span className="block text-xs uppercase tracking-widest text-sage mb-1">
                   Upprepa varje vecka, X gånger
@@ -328,7 +371,11 @@ export default function ManualBookingModal({ prefill, onClose, onBooked }: Props
                 className="px-6 py-3 bg-ink text-paper font-display uppercase tracking-widest text-sm rounded-sm disabled:opacity-40"
               >
                 {submitting
-                  ? "Bokar…"
+                  ? isEditing
+                    ? "Sparar…"
+                    : "Bokar…"
+                  : isEditing
+                  ? "Spara ändring"
                   : repeatWeeks > 1
                   ? `Skapa ${repeatWeeks} bokningar`
                   : "Boka in"}
