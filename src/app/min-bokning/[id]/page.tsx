@@ -291,7 +291,7 @@ export default function ManageBookingPage() {
                         Tid
                       </p>
                       {loadingAvailability && (
-                        <p className="text-sm text-sage font-mono">Hämtar…</p>
+                        <p className="text-sm text-sage font-mono">Hämtar lediga tider…</p>
                       )}
                       {!loadingAvailability && availability && (
                         <SlotPicker

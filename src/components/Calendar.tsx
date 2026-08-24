@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const MONTH_NAMES = [
   "Januari", "Februari", "Mars", "April", "Maj", "Juni",
@@ -24,18 +24,36 @@ function isSameOrAfterCurrentMonth(year: number, month: number): boolean {
     (year === now.getFullYear() && month >= now.getMonth())
   );
 }
+function monthOf(dateStr: string): { year: number; month: number } {
+  const [y, m] = dateStr.split("-").map(Number);
+  return { year: y, month: m - 1 };
+}
 
 type Props = {
   selectedDate: string | null;
   onSelect: (date: string) => void;
   openDays: number[];
+  // Admin-läge: alla dagar går att klicka (även stängda/förflutna,
+  // nedtonade men inte spärrade) — gästkalendern spärrar dem som vanligt.
+  allowAllDays?: boolean;
 };
 
-export default function Calendar({ selectedDate, onSelect, openDays }: Props) {
+export default function Calendar({ selectedDate, onSelect, openDays, allowAllDays }: Props) {
   const [calendarMonth, setCalendarMonth] = useState(() => {
+    if (selectedDate) return monthOf(selectedDate);
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() };
   });
+
+  // Hoppa till rätt månad om det valda datumet ändras utifrån (t.ex.
+  // en "Idag"-genväg), så kalendern inte visar fel månad.
+  useEffect(() => {
+    if (!selectedDate) return;
+    const target = monthOf(selectedDate);
+    setCalendarMonth((cur) =>
+      cur.year === target.year && cur.month === target.month ? cur : target
+    );
+  }, [selectedDate]);
 
   function goPrevMonth() {
     setCalendarMonth((cur) => {
@@ -45,7 +63,7 @@ export default function Calendar({ selectedDate, onSelect, openDays }: Props) {
         month = 11;
         year -= 1;
       }
-      if (!isSameOrAfterCurrentMonth(year, month)) return cur;
+      if (!allowAllDays && !isSameOrAfterCurrentMonth(year, month)) return cur;
       return { year, month };
     });
   }
@@ -75,7 +93,8 @@ export default function Calendar({ selectedDate, onSelect, openDays }: Props) {
     const weekday = new Date(year, month, day).getDay();
     const isPast = dateStr < today;
     const isClosed = !openDays.includes(weekday);
-    const disabled = isPast || isClosed;
+    const disabled = allowAllDays ? false : isPast || isClosed;
+    const muted = isPast || isClosed; // nedtonad även när klickbar i admin-läge
     const isToday = dateStr === today;
     const isSelected = selectedDate === dateStr;
 
@@ -89,6 +108,8 @@ export default function Calendar({ selectedDate, onSelect, openDays }: Props) {
           "relative aspect-square flex items-center justify-center rounded-sm text-sm font-semibold border transition-colors",
           disabled
             ? "text-ink/25 cursor-not-allowed border-transparent"
+            : muted
+            ? "text-ink/40 border-transparent hover:border-gold"
             : "border-transparent hover:border-gold text-ink",
           isSelected ? "bg-ink text-paper" : !disabled ? "bg-white" : "",
         ].join(" ")}
@@ -108,6 +129,7 @@ export default function Calendar({ selectedDate, onSelect, openDays }: Props) {
           type="button"
           onClick={goPrevMonth}
           disabled={
+            !allowAllDays &&
             !isSameOrAfterCurrentMonth(
               month === 0 ? year - 1 : year,
               month === 0 ? 11 : month - 1

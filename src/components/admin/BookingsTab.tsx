@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Settings } from "./SettingsTab";
 import DayBookingsTable, { Booking } from "./DayBookingsTable";
+import Calendar from "@/components/Calendar";
 
 export type { Booking };
 
@@ -30,7 +31,6 @@ function weekdayOf(dateStr: string): number {
   const [y, m, d] = dateStr.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay();
 }
-// Måndagen i samma vecka som dateStr.
 function mondayOf(dateStr: string): string {
   const w = weekdayOf(dateStr); // 0=sön ... 6=lör
   const diff = w === 0 ? -6 : 1 - w;
@@ -49,28 +49,27 @@ function formatWeekRangeLabel(mondayStr: string): string {
 
 export default function BookingsTab({ settings, onNewBooking, onEditBooking }: Props) {
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayISO()));
-  const [customMode, setCustomMode] = useState(false);
-  const [customDate, setCustomDate] = useState<string>(todayISO());
+  const [singleDate, setSingleDate] = useState<string | null>(null); // satt = avsmalnad till en dag
+  const [showAll, setShowAll] = useState(false);
 
   const [bookings, setBookings] = useState<Booking[] | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const rangeFrom = customMode ? (customDate || undefined) : weekStart;
-  const rangeTo = customMode ? (customDate || undefined) : addDays(weekStart, 6);
+  const rangeFrom = singleDate ?? weekStart;
+  const rangeTo = singleDate ?? addDays(weekStart, 6);
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStart, customMode, customDate]);
+  }, [weekStart, singleDate, showAll]);
 
   function load() {
     setLoading(true);
-    let url = "/api/admin/bookings";
-    if (customMode) {
-      if (customDate) url += `?date=${customDate}`;
-    } else {
-      url += `?from=${weekStart}&to=${addDays(weekStart, 6)}`;
-    }
+    const url = showAll
+      ? `/api/admin/bookings`
+      : singleDate
+      ? `/api/admin/bookings?date=${singleDate}`
+      : `/api/admin/bookings?from=${weekStart}&to=${addDays(weekStart, 6)}`;
     fetch(url)
       .then((r) => r.json())
       .then(setBookings)
@@ -86,45 +85,54 @@ export default function BookingsTab({ settings, onNewBooking, onEditBooking }: P
     load();
   }
 
-  // Vilka dagar som ska visas: dagar med bokningar, plus (i veckovyn)
-  // alla öppna dagar även utan bokningar, så man ser att det är tomt.
+  function selectDayInCalendar(date: string) {
+    setShowAll(false);
+    setSingleDate(date);
+    setWeekStart(mondayOf(date));
+  }
+
+  // Dagar att visa: om "visa alla", varje dag som förekommer i datan.
+  // Om avsmalnad till en dag, bara den. Annars alla öppna dagar i
+  // veckan (även utan bokningar, så tomt syns tydligt).
   const days = useMemo(() => {
+    if (showAll) {
+      if (!bookings) return [];
+      return Array.from(new Set(bookings.map((b) => b.date))).sort();
+    }
+    if (singleDate) return [singleDate];
     if (!bookings) return [];
     const active = bookings.filter((b) => b.status !== "cancelled");
     const set = new Set<string>(active.map((b) => b.date));
-    if (!customMode) {
-      for (let i = 0; i < 7; i++) {
-        const d = addDays(weekStart, i);
-        if (settings.openDays.includes(weekdayOf(d))) set.add(d);
-      }
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(weekStart, i);
+      if (settings.openDays.includes(weekdayOf(d))) set.add(d);
     }
     return Array.from(set).sort();
-  }, [bookings, settings.openDays, weekStart, customMode]);
+  }, [bookings, settings.openDays, weekStart, singleDate, showAll]);
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        {!customMode ? (
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setWeekStart((w) => addDays(w, -7))}
-              className="w-9 h-9 border border-ink/20 rounded-sm hover:border-ink/50"
-            >
-              ‹
-            </button>
-            <div className="text-center min-w-[180px]">
-              <p className="font-display uppercase text-lg">
-                {weekStart === mondayOf(todayISO()) ? "Denna vecka" : `Vecka`}
-              </p>
-              <p className="text-xs text-sage">{formatWeekRangeLabel(weekStart)}</p>
-            </div>
-            <button
-              onClick={() => setWeekStart((w) => addDays(w, 7))}
-              className="w-9 h-9 border border-ink/20 rounded-sm hover:border-ink/50"
-            >
-              ›
-            </button>
-            {weekStart !== mondayOf(todayISO()) && (
+      <div className="flex flex-wrap items-start justify-between gap-6 mb-6">
+        <div>
+          <Calendar
+            selectedDate={singleDate}
+            onSelect={selectDayInCalendar}
+            openDays={settings.openDays}
+            allowAllDays
+          />
+          <div className="flex gap-3 mt-2">
+            {(singleDate || showAll) && (
+              <button
+                onClick={() => {
+                  setSingleDate(null);
+                  setShowAll(false);
+                }}
+                className="text-sm underline decoration-dotted text-sage hover:text-ink"
+              >
+                ← Visa veckan
+              </button>
+            )}
+            {!singleDate && !showAll && weekStart !== mondayOf(todayISO()) && (
               <button
                 onClick={() => setWeekStart(mondayOf(todayISO()))}
                 className="text-sm underline decoration-dotted text-sage hover:text-ink"
@@ -132,52 +140,53 @@ export default function BookingsTab({ settings, onNewBooking, onEditBooking }: P
                 Denna vecka
               </button>
             )}
+            {!showAll && (
+              <button
+                onClick={() => {
+                  setShowAll(true);
+                  setSingleDate(null);
+                }}
+                className="text-sm underline decoration-dotted text-sage hover:text-ink"
+              >
+                Visa alla bokningar
+              </button>
+            )}
           </div>
-        ) : (
-          <div className="flex items-end gap-3">
-            <label className="text-sm">
-              <span className="block text-xs uppercase tracking-widest text-sage mb-1">
-                Datum
-              </span>
-              <input
-                type="date"
-                value={customDate}
-                onChange={(e) => setCustomDate(e.target.value)}
-                className="border border-ink/20 rounded-sm px-3 py-2"
-              />
-            </label>
-            <button
-              onClick={() => setCustomDate("")}
-              className="text-sm underline decoration-dotted text-sage hover:text-ink pb-2"
+        </div>
+
+        <div className="flex flex-col items-end gap-3">
+          <div>
+            <p className="font-display uppercase text-lg text-right">
+              {showAll
+                ? "Alla bokningar"
+                : singleDate
+                ? formatDayLabel(singleDate)
+                : weekStart === mondayOf(todayISO())
+                ? "Denna vecka"
+                : "Vecka"}
+            </p>
+            {!singleDate && !showAll && (
+              <p className="text-xs text-sage text-right">{formatWeekRangeLabel(weekStart)}</p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <a
+              href={
+                showAll
+                  ? "/api/admin/bookings/export"
+                  : `/api/admin/bookings/export?from=${rangeFrom}&to=${rangeTo}`
+              }
+              className="px-4 py-2 bg-ink text-paper text-sm font-display uppercase tracking-wide rounded-sm hover:bg-ink-700"
             >
-              Visa alla
+              Ladda ner Excel
+            </a>
+            <button
+              onClick={() => onNewBooking(singleDate ?? undefined)}
+              className="px-4 py-2 border border-ink/20 text-sm font-display uppercase tracking-wide rounded-sm hover:border-ink/50"
+            >
+              + Ny bokning
             </button>
           </div>
-        )}
-
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => setCustomMode((v) => !v)}
-            className="text-sm underline decoration-dotted text-sage hover:text-ink"
-          >
-            {customMode ? "Tillbaka till veckovy" : "Anpassat filter"}
-          </button>
-          <a
-            href={
-              rangeFrom || rangeTo
-                ? `/api/admin/bookings/export?${rangeFrom ? `from=${rangeFrom}&` : ""}${rangeTo ? `to=${rangeTo}` : ""}`
-                : "/api/admin/bookings/export"
-            }
-            className="px-4 py-2 bg-ink text-paper text-sm font-display uppercase tracking-wide rounded-sm hover:bg-ink-700"
-          >
-            Ladda ner Excel
-          </a>
-          <button
-            onClick={() => onNewBooking()}
-            className="px-4 py-2 border border-ink/20 text-sm font-display uppercase tracking-wide rounded-sm hover:border-ink/50"
-          >
-            + Ny bokning
-          </button>
         </div>
       </div>
 
@@ -190,9 +199,11 @@ export default function BookingsTab({ settings, onNewBooking, onEditBooking }: P
       <div className="space-y-10">
         {days.map((date) => (
           <div key={date}>
-            <h3 className="font-display uppercase text-base mb-3 pb-2 border-b border-ink/10">
-              {formatDayLabel(date)}
-            </h3>
+            {(!singleDate || showAll) && (
+              <h3 className="font-display uppercase text-base mb-3 pb-2 border-b border-ink/10">
+                {formatDayLabel(date)}
+              </h3>
+            )}
             <DayBookingsTable
               bookings={(bookings ?? []).filter((b) => b.date === date)}
               sittings={settings.sittings}

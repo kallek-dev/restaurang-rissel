@@ -19,6 +19,13 @@ type Props = {
   onBookIn: (request: GroupRequest) => void;
 };
 
+const WEEKDAY_LABELS = ["Sön", "Mån", "Tis", "Ons", "Tor", "Fre", "Lör"];
+function formatDateLabel(dateStr: string): string {
+  const [, m, d] = dateStr.split("-").map(Number);
+  const weekday = new Date(dateStr + "T12:00:00Z").getUTCDay();
+  return `${WEEKDAY_LABELS[weekday]} ${d}/${m}`;
+}
+
 export default function RequestsTab({ onBookIn }: Props) {
   const [requests, setRequests] = useState<GroupRequest[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -94,7 +101,7 @@ export default function RequestsTab({ onBookIn }: Props) {
                   {r.name} — {r.partySize} personer
                 </p>
                 <p className="text-sm text-sage">
-                  Önskar {r.date}, {r.sitting}
+                  Önskar {formatDateLabel(r.date)}, {r.sitting}
                 </p>
                 <p className="text-sm text-sage">
                   {r.phone} · {r.email}

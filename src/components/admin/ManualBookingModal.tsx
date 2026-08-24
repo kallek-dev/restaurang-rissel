@@ -297,7 +297,7 @@ export default function ManualBookingModal({ settings, prefill, editingBooking, 
                 </span>
                 {!date && <p className="text-sm text-sage">Välj datum först.</p>}
                 {date && loadingAvailability && (
-                  <p className="text-sm text-sage font-mono">Hämtar…</p>
+                  <p className="text-sm text-sage font-mono">Hämtar lediga tider…</p>
                 )}
                 {date && !loadingAvailability && capacity && (
                   <AdminSlotPicker
@@ -316,10 +316,14 @@ export default function ManualBookingModal({ settings, prefill, editingBooking, 
                 Antal personer
               </span>
               <input
-                type="number"
-                min={1}
-                value={partySize}
-                onChange={(e) => setPartySize(Number(e.target.value) || 0)}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={partySize === 0 ? "" : String(partySize)}
+                onChange={(e) => {
+                  const digitsOnly = e.target.value.replace(/\D/g, "");
+                  setPartySize(digitsOnly === "" ? 0 : Number(digitsOnly));
+                }}
                 className={fieldClass}
               />
             </label>

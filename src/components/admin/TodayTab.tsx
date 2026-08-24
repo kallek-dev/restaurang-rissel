@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Settings } from "./SettingsTab";
 import DayBookingsTable, { Booking } from "./DayBookingsTable";
+import Calendar from "@/components/Calendar";
 
 type CapacitySlot = {
   time: string;
@@ -21,11 +22,6 @@ type Props = {
 function todayISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-function addDays(dateStr: string, days: number): string {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const date = new Date(Date.UTC(y, m - 1, d + days, 12));
-  return date.toISOString().slice(0, 10);
 }
 function formatDateLabel(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -75,32 +71,18 @@ export default function TodayTab({ settings, onNewBooking, onEditBooking }: Prop
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setDate((d) => addDays(d, -1))}
-            className="w-9 h-9 border border-ink/20 rounded-sm hover:border-ink/50"
-          >
-            ‹
-          </button>
-          <div className="text-center min-w-[220px]">
-            <p className="font-display uppercase text-lg">
-              {date === todayISO() ? "Idag" : formatDateLabel(date)}
-            </p>
-            {date !== todayISO() && (
-              <p className="text-xs text-sage">{date}</p>
-            )}
-          </div>
-          <button
-            onClick={() => setDate((d) => addDays(d, 1))}
-            className="w-9 h-9 border border-ink/20 rounded-sm hover:border-ink/50"
-          >
-            ›
-          </button>
+      <div className="flex flex-wrap items-start justify-between gap-6 mb-6">
+        <div>
+          <Calendar
+            selectedDate={date}
+            onSelect={setDate}
+            openDays={settings.openDays}
+            allowAllDays
+          />
           {date !== todayISO() && (
             <button
               onClick={() => setDate(todayISO())}
-              className="text-sm underline decoration-dotted text-sage hover:text-ink"
+              className="text-sm underline decoration-dotted text-sage hover:text-ink mt-2"
             >
               Till idag
             </button>
@@ -108,11 +90,18 @@ export default function TodayTab({ settings, onNewBooking, onEditBooking }: Prop
         </div>
         <button
           onClick={() => onNewBooking(date)}
-          className="px-4 py-2 bg-ink text-paper text-sm font-display uppercase tracking-wide rounded-sm hover:bg-ink-700"
+          className="px-4 py-2 bg-ink text-paper text-sm font-display uppercase tracking-wide rounded-sm hover:bg-ink-700 shrink-0"
         >
           + Ny bokning
         </button>
       </div>
+
+      <h2 className="font-display uppercase text-lg mb-1">
+        {date === todayISO() ? "Idag" : formatDateLabel(date)}
+      </h2>
+      <p className="text-xs text-sage mb-4">
+        {date === todayISO() ? formatDateLabel(date) : "\u00A0"}
+      </p>
 
       <div className="mb-6">
         <button
