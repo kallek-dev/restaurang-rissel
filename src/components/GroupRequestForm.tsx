@@ -35,8 +35,7 @@ export default function GroupRequestForm({
     /\S+@\S+\.\S+/.test(email) &&
     phone.trim().length >= 4;
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit() {
     if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
@@ -67,10 +66,7 @@ export default function GroupRequestForm({
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="mt-3 border border-gold/40 bg-gold/10 rounded-sm p-4 space-y-3"
-    >
+    <div className="mt-3 border border-gold/40 bg-gold/10 rounded-sm p-4 space-y-3">
       <p className="text-sm">
         Stora sällskap (fler än {maxOnline} personer) bokas inte direkt
         online, eftersom det oftast kräver en särskild bordslösning. Fyll
@@ -162,12 +158,13 @@ export default function GroupRequestForm({
       </div>
       {error && <p className="text-brick text-sm">{error}</p>}
       <button
-        type="submit"
+        type="button"
+        onClick={handleSubmit}
         disabled={!canSubmit || submitting}
         className="px-5 py-2 bg-ink text-paper text-sm font-display uppercase tracking-wide rounded-sm disabled:opacity-40"
       >
         {submitting ? "Skickar…" : "Skicka förfrågan"}
       </button>
-    </form>
+    </div>
   );
 }
