@@ -1,23 +1,61 @@
-import { Resend } from "resend";
+import { Client, SendEmailV3_1 } from "node-mailjet";
 import type { Booking, GroupRequest, WaitlistEntry } from "@prisma/client";
 import type { AppSettings } from "./settings";
 
-function getResend(): Resend | null {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
+// Mailjet stödjer att verifiera en enda mailadress (t.ex. ett Gmail-
+// konto) istället för en hel domän — ingen DNS krävs. Gratis upp till
+// 6 000 mail/månad (200/dag), ingen tidsgräns. Se README → "Mail".
+// Kräver TVÅ nycklar (publik + hemlig), inte en enda som andra tjänster.
+let mailjetClient: Client | null = null;
+function getMailjet(): Client | null {
+  if (mailjetClient) return mailjetClient;
+  const apiKey = process.env.MJ_APIKEY_PUBLIC;
+  const apiSecret = process.env.MJ_APIKEY_PRIVATE;
+  if (!apiKey || !apiSecret) {
     console.warn(
-      "RESEND_API_KEY saknas — mail skickas inte. Se .env.example."
+      "MJ_APIKEY_PUBLIC/MJ_APIKEY_PRIVATE saknas — mail skickas inte. Se .env.example."
     );
     return null;
   }
-  return new Resend(apiKey);
+  mailjetClient = new Client({ apiKey, apiSecret });
+  return mailjetClient;
 }
 
-function fromAddress(settings: AppSettings): string {
-  return (
-    process.env.RESEND_FROM_EMAIL ??
-    `${settings.restaurantName} <bokning@example.se>`
-  );
+// Tolkar "Namn <mail@exempel.se>" (samma format som innan) till det
+// objekt Mailjet vill ha. Fungerar även med bara en ren mailadress.
+function fromAddress(settings: AppSettings): { Email: string; Name: string } {
+  const raw =
+    process.env.MJ_FROM_EMAIL ??
+    `${settings.restaurantName} <bokning@example.se>`;
+  const match = raw.match(/^(.*)<(.+)>$/);
+  if (match) {
+    return { Name: match[1].trim(), Email: match[2].trim() };
+  }
+  return { Name: settings.restaurantName, Email: raw.trim() };
+}
+
+// Delad sändningsfunktion — alla mailen nedan går via den här.
+async function sendViaMailjet(
+  to: string,
+  subject: string,
+  html: string,
+  settings: AppSettings
+) {
+  const mailjet = getMailjet();
+  if (!mailjet) return;
+
+  const data: SendEmailV3_1.Body = {
+    Messages: [
+      {
+        From: fromAddress(settings),
+        To: [{ Email: to }],
+        Subject: subject,
+        HTMLPart: html,
+      },
+    ],
+  };
+
+  await mailjet.post("send", { version: "v3.1" }).request(data);
 }
 
 // Basadress till sajten, för att bygga fullständiga länkar i mail.
@@ -77,9 +115,6 @@ export async function sendBookingConfirmation(
   booking: Booking,
   settings: AppSettings
 ) {
-  const resend = getResend();
-  if (!resend) return;
-
   const html = wrapTemplate(
     "Din bokning är bekräftad",
     `
@@ -102,21 +137,18 @@ export async function sendBookingConfirmation(
     settings
   );
 
-  await resend.emails.send({
-    from: fromAddress(settings),
-    to: booking.email,
-    subject: `Bokningsbekräftelse — ${formatDateSwedish(booking.date)} kl ${booking.timeSlot}`,
+  await sendViaMailjet(
+    booking.email,
+    `Bokningsbekräftelse — ${formatDateSwedish(booking.date)} kl ${booking.timeSlot}`,
     html,
-  });
+    settings
+  );
 }
 
 export async function sendBookingUpdated(
   booking: Booking,
   settings: AppSettings
 ) {
-  const resend = getResend();
-  if (!resend) return;
-
   const html = wrapTemplate(
     "Din bokning är ändrad",
     `
@@ -139,21 +171,18 @@ export async function sendBookingUpdated(
     settings
   );
 
-  await resend.emails.send({
-    from: fromAddress(settings),
-    to: booking.email,
-    subject: `Bokning uppdaterad — ${formatDateSwedish(booking.date)} kl ${booking.timeSlot}`,
+  await sendViaMailjet(
+    booking.email,
+    `Bokning uppdaterad — ${formatDateSwedish(booking.date)} kl ${booking.timeSlot}`,
     html,
-  });
+    settings
+  );
 }
 
 export async function sendBookingReminder(
   booking: Booking,
   settings: AppSettings
 ) {
-  const resend = getResend();
-  if (!resend) return;
-
   const html = wrapTemplate(
     "Påminnelse: bord imorgon",
     `
@@ -170,21 +199,18 @@ export async function sendBookingReminder(
     settings
   );
 
-  await resend.emails.send({
-    from: fromAddress(settings),
-    to: booking.email,
-    subject: `Påminnelse: bord imorgon kl ${booking.timeSlot}`,
+  await sendViaMailjet(
+    booking.email,
+    `Påminnelse: bord imorgon kl ${booking.timeSlot}`,
     html,
-  });
+    settings
+  );
 }
 
 export async function sendGroupRequestReceived(
   request: GroupRequest,
   settings: AppSettings
 ) {
-  const resend = getResend();
-  if (!resend) return;
-
   const html = wrapTemplate(
     "Vi har tagit emot er förfrågan",
     `
@@ -200,21 +226,18 @@ export async function sendGroupRequestReceived(
     settings
   );
 
-  await resend.emails.send({
-    from: fromAddress(settings),
-    to: request.email,
-    subject: `Vi har tagit emot er förfrågan — ${formatDateSwedish(request.date)}`,
+  await sendViaMailjet(
+    request.email,
+    `Vi har tagit emot er förfrågan — ${formatDateSwedish(request.date)}`,
     html,
-  });
+    settings
+  );
 }
 
 export async function sendWaitlistSpotAvailable(
   entry: WaitlistEntry,
   settings: AppSettings
 ) {
-  const resend = getResend();
-  if (!resend) return;
-
   const claimUrl = `${siteBaseUrl()}/vantelista/${entry.id}?token=${entry.claimToken}`;
 
   const html = wrapTemplate(
@@ -235,12 +258,12 @@ export async function sendWaitlistSpotAvailable(
     settings
   );
 
-  await resend.emails.send({
-    from: fromAddress(settings),
-    to: entry.email,
-    subject: `En plats har blivit ledig — ${formatDateSwedish(entry.date)} kl ${entry.timeSlot}`,
+  await sendViaMailjet(
+    entry.email,
+    `En plats har blivit ledig — ${formatDateSwedish(entry.date)} kl ${entry.timeSlot}`,
     html,
-  });
+    settings
+  );
 }
 
 function escapeHtml(str: string): string {
