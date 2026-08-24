@@ -59,6 +59,7 @@ export default function BookingForm() {
 
   const [partySize, setPartySize] = useState<number>(2);
   const [largeParty, setLargeParty] = useState(false);
+  const [groupRequestSubmitted, setGroupRequestSubmitted] = useState(false);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -197,6 +198,33 @@ export default function BookingForm() {
     );
   }
 
+  if (groupRequestSubmitted) {
+    return (
+      <div className="border border-ink/10 bg-paper-50 rounded-sm p-8 max-w-2xl">
+        <p className="font-display uppercase tracking-[0.2em] text-xs text-sage">
+          Mottagen
+        </p>
+        <h2 className="font-display uppercase text-2xl mt-1">
+          Tack för er förfrågan!
+        </h2>
+        <p className="mt-4 text-ink/80 leading-relaxed">
+          Vi har fått er förfrågan och hör av oss så snart vi kan för att
+          bekräfta tid. En mottagningsbekräftelse är skickad till er mail.
+        </p>
+        <p className="mt-4 text-ink/80 leading-relaxed">
+          Frågor under tiden? Kontakta oss på{" "}
+          <a
+            className="underline decoration-gold"
+            href={`mailto:${settings.contactEmail}`}
+          >
+            {settings.contactEmail}
+          </a>
+          .
+        </p>
+      </div>
+    );
+  }
+
   if (submitState.status === "success") {
     return (
       <div className="grid lg:grid-cols-5 gap-8">
@@ -304,6 +332,7 @@ export default function BookingForm() {
               defaultDate={selectedDate}
               sittings={settings.sittings}
               maxOnline={maxOnline}
+              onSubmitted={() => setGroupRequestSubmitted(true)}
             />
           )}
         </section>

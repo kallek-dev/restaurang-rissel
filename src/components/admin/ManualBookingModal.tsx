@@ -28,7 +28,7 @@ const fieldClass =
 
 export default function ManualBookingModal({ prefill, onClose, onBooked }: Props) {
   const [date, setDate] = useState(prefill?.date ?? "");
-  const [manual, setManual] = useState(false);
+  const [manual, setManual] = useState(Boolean(prefill?.groupRequestId));
   const [timeSlot, setTimeSlot] = useState<string | null>(null);
   const [manualTime, setManualTime] = useState("12:00");
   const [partySize, setPartySize] = useState(prefill?.partySize ?? 2);
@@ -156,15 +156,20 @@ export default function ManualBookingModal({ prefill, onClose, onBooked }: Props
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-start gap-2 text-sm border border-gold/40 bg-gold/10 rounded-sm p-3">
               <input
                 type="checkbox"
                 checked={manual}
                 onChange={(e) => setManual(e.target.checked)}
+                className="mt-0.5"
               />
-              Manuell platstilldelning (ingen kapacitetskontroll — för
-              sällskap som behöver en särskild bordslösning, t.ex.
-              ihopskjutna bord)
+              <span>
+                <strong>Manuell platstilldelning</strong> — hoppar över
+                all kapacitetskontroll. Använd för sällskap större än ert
+                största bord (t.ex. ihopskjutna bord), eller vid andra
+                särskilda lösningar. Utan den här ikryssad stoppas
+                sällskap som inte ryms i någon vanlig bordstyp.
+              </span>
             </label>
 
             <label className="block text-sm">
@@ -289,24 +294,26 @@ export default function ManualBookingModal({ prefill, onClose, onBooked }: Props
               </label>
             </div>
 
-            <label className="block text-sm max-w-[220px]">
-              <span className="block text-xs uppercase tracking-widest text-sage mb-1">
-                Upprepa varje vecka, X gånger
-              </span>
-              <input
-                type="number"
-                min={1}
-                max={12}
-                value={repeatWeeks}
-                onChange={(e) => setRepeatWeeks(Number(e.target.value) || 1)}
-                className={fieldClass}
-              />
-              <span className="block text-xs text-sage mt-1">
-                Skapar {repeatWeeks} separata bokningar, en per vecka.
-                Hoppar över veckor som redan är fullbokade och talar om
-                vilka.
-              </span>
-            </label>
+            {!prefill?.groupRequestId && (
+              <label className="block text-sm max-w-[220px]">
+                <span className="block text-xs uppercase tracking-widest text-sage mb-1">
+                  Upprepa varje vecka, X gånger
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={repeatWeeks}
+                  onChange={(e) => setRepeatWeeks(Number(e.target.value) || 1)}
+                  className={fieldClass}
+                />
+                <span className="block text-xs text-sage mt-1">
+                  Skapar {repeatWeeks} separata bokningar, en per vecka.
+                  Hoppar över veckor som redan är fullbokade och talar om
+                  vilka.
+                </span>
+              </label>
+            )}
 
             {error && (
               <div className="border border-brick/40 bg-brick/5 text-brick rounded-sm p-4 text-sm">
