@@ -6,6 +6,7 @@ type Props = {
   defaultDate: string | null;
   sittings: string[];
   maxOnline: number;
+  onSubmitted: () => void;
 };
 
 const fieldClass =
@@ -15,6 +16,7 @@ export default function GroupRequestForm({
   defaultDate,
   sittings,
   maxOnline,
+  onSubmitted,
 }: Props) {
   const [date, setDate] = useState(defaultDate ?? "");
   const [sitting, setSitting] = useState(sittings[0] ?? "");
@@ -25,7 +27,6 @@ export default function GroupRequestForm({
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
 
   const canSubmit =
     date &&
@@ -36,7 +37,17 @@ export default function GroupRequestForm({
     phone.trim().length >= 4;
 
   async function handleSubmit() {
-    if (!canSubmit) return;
+    if (!canSubmit) {
+      const missing: string[] = [];
+      if (!date) missing.push("datum");
+      if (!sitting) missing.push("sittning");
+      if (!(partySize > 0)) missing.push("antal personer");
+      if (!name.trim()) missing.push("namn");
+      if (!/\S+@\S+\.\S+/.test(email)) missing.push("giltig mailadress");
+      if (phone.trim().length < 4) missing.push("telefonnummer");
+      setError(`Fyll i: ${missing.join(", ")}.`);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -47,22 +58,12 @@ export default function GroupRequestForm({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Något gick fel. Försök igen.");
-      setDone(true);
+      onSubmitted();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Något gick fel.");
     } finally {
       setSubmitting(false);
     }
-  }
-
-  if (done) {
-    return (
-      <div className="mt-3 border border-sage/40 bg-sage/10 rounded-sm p-4 text-sm">
-        Tack! Vi har fått er förfrågan och hör av oss så snart vi kan för
-        att bekräfta tid. En mottagningsbekräftelse är skickad till er
-        mail.
-      </div>
-    );
   }
 
   return (
@@ -160,7 +161,7 @@ export default function GroupRequestForm({
       <button
         type="button"
         onClick={handleSubmit}
-        disabled={!canSubmit || submitting}
+        disabled={submitting}
         className="px-5 py-2 bg-ink text-paper text-sm font-display uppercase tracking-wide rounded-sm disabled:opacity-40"
       >
         {submitting ? "Skickar…" : "Skicka förfrågan"}
