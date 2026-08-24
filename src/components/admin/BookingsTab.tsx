@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { Settings } from "./SettingsTab";
 
 export type Booking = {
@@ -96,12 +96,6 @@ export default function BookingsTab({ settings, onNewBooking, onEditBooking }: P
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "cancelled" }),
     });
-    load();
-  }
-
-  async function deleteBooking(id: string, label: string) {
-    if (!confirm(`Radera bokningen för ${label} permanent? Går inte att ångra.`)) return;
-    await fetch(`/api/admin/bookings/${id}`, { method: "DELETE" });
     load();
   }
 
@@ -232,71 +226,124 @@ export default function BookingsTab({ settings, onNewBooking, onEditBooking }: P
         <p className="text-sage text-sm">Inga bokningar hittades.</p>
       )}
 
-      <div className="space-y-8">
+      <div className="space-y-10">
         {groupedByDay.map(({ date, sittingGroups }) => (
           <div key={date}>
             <h3 className="font-display uppercase text-base mb-3 pb-2 border-b border-ink/10">
               {formatDayLabel(date)}
             </h3>
-            <div className="space-y-5">
-              {sittingGroups.map(({ sitting, bookings: list, capacity }) => (
-                <div key={sitting}>
-                  <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
-                    <p className="font-mono text-sm text-ink/80">{sitting}-passet</p>
-                    <p className="text-xs text-sage">
-                      {capacity.map((c) => `${c.booked} av ${c.total} ${c.label.toLowerCase()}`).join(" · ")}
-                    </p>
-                  </div>
-                  {list.length === 0 ? (
-                    <p className="text-xs text-sage pl-2">Inga bokningar.</p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {list.map((b) => (
-                        <div
-                          key={b.id}
-                          className="flex flex-wrap items-center gap-3 border border-ink/10 rounded-sm px-3 py-2 text-sm"
-                        >
-                          <span className="font-mono min-w-[46px]">{b.timeSlot}</span>
-                          <span className="font-medium min-w-[130px]">{b.name}</span>
-                          <span className="text-sage">{b.partySize} pers</span>
-                          <span className="text-sage">{b.tableTypeId}</span>
-                          <span className="text-sage">{b.phone}</span>
-                          {b.createdByAdmin && (
-                            <span className="text-[10px] uppercase tracking-widest bg-gold/20 text-gold-700 px-1.5 py-0.5 rounded-sm">
-                              Admin
+            <div className="overflow-x-auto border border-ink/10 rounded-sm">
+              <table className="w-full text-sm">
+                <thead className="bg-paper-100 text-left">
+                  <tr>
+                    <Th>Tid</Th>
+                    <Th>Namn</Th>
+                    <Th>Antal</Th>
+                    <Th>Bord</Th>
+                    <Th>Telefon</Th>
+                    <Th>Mail</Th>
+                    <Th>Anteckning</Th>
+                    <Th></Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sittingGroups.map(({ sitting, bookings: list, capacity }) => (
+                    <Fragment key={sitting}>
+                      <tr key={`${sitting}-header`} className="border-t border-ink/10 bg-paper-50">
+                        <td colSpan={8} className="px-3 py-1.5">
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <span className="font-mono text-xs uppercase tracking-widest text-ink/70">
+                              {sitting}-passet
                             </span>
-                          )}
-                          {b.note && <span className="text-xs text-sage italic">{b.note}</span>}
-                          <div className="ml-auto flex gap-3 shrink-0">
-                            <button
-                              onClick={() => onEditBooking(b)}
-                              className="text-ink underline decoration-dotted text-xs"
-                            >
-                              Redigera
-                            </button>
-                            <button
-                              onClick={() => cancelBooking(b.id)}
-                              className="text-brick underline decoration-dotted text-xs"
-                            >
-                              Avboka
-                            </button>
-                            <button
-                              onClick={() => deleteBooking(b.id, b.name)}
-                              className="text-brick underline decoration-dotted text-xs"
-                            >
-                              Radera
-                            </button>
+                            <span className="text-xs text-sage">
+                              {capacity
+                                .map((c) => `${c.booked} av ${c.total} ${c.label.toLowerCase()}`)
+                                .join(" · ")}
+                            </span>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+                        </td>
+                      </tr>
+                      {list.length === 0 ? (
+                        <tr key={`${sitting}-empty`} className="border-t border-ink/5">
+                          <td colSpan={8} className="px-3 py-2 text-xs text-sage">
+                            Inga bokningar.
+                          </td>
+                        </tr>
+                      ) : (
+                        list.map((b) => (
+                          <tr key={b.id} className="border-t border-ink/5">
+                            <Td className="font-mono">{b.timeSlot}</Td>
+                            <Td>
+                              {b.name}
+                              {b.createdByAdmin && (
+                                <span className="ml-1 text-[10px] uppercase tracking-widest bg-gold/20 text-gold-700 px-1.5 py-0.5 rounded-sm">
+                                  Admin
+                                </span>
+                              )}
+                            </Td>
+                            <Td>{b.partySize}</Td>
+                            <Td>{tableTypeLabel(b.tableTypeId, settings)}</Td>
+                            <Td>{b.phone}</Td>
+                            <Td>{b.email}</Td>
+                            <Td className="max-w-[160px] truncate" title={b.note}>
+                              {b.note || "—"}
+                            </Td>
+                            <Td>
+                              <div className="flex gap-3 whitespace-nowrap">
+                                <button
+                                  onClick={() => onEditBooking(b)}
+                                  className="text-ink underline decoration-dotted text-xs"
+                                >
+                                  Redigera
+                                </button>
+                                <button
+                                  onClick={() => cancelBooking(b.id)}
+                                  className="text-brick underline decoration-dotted text-xs"
+                                >
+                                  Avboka
+                                </button>
+                              </div>
+                            </Td>
+                          </tr>
+                        ))
+                      )}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         ))}
       </div>
     </div>
+  );
+}
+
+function tableTypeLabel(tableTypeId: string, settings: Settings): string {
+  if (tableTypeId === "manuell") return "Manuell";
+  return settings.tableTypes.find((tt) => tt.id === tableTypeId)?.label ?? tableTypeId;
+}
+
+function Th({ children }: { children?: React.ReactNode }) {
+  return (
+    <th className="px-3 py-2 text-xs uppercase tracking-widest text-sage font-medium">
+      {children}
+    </th>
+  );
+}
+
+function Td({
+  children,
+  className,
+  title,
+}: {
+  children?: React.ReactNode;
+  className?: string;
+  title?: string;
+}) {
+  return (
+    <td className={`px-3 py-2 ${className ?? ""}`} title={title}>
+      {children}
+    </td>
   );
 }

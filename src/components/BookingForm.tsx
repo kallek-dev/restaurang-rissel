@@ -223,6 +223,12 @@ export default function BookingForm() {
           </a>
           .
         </p>
+        <a
+          href="/"
+          className="inline-block mt-6 text-sm underline decoration-dotted text-sage hover:text-ink"
+        >
+          ← Tillbaka till bokningssidan
+        </a>
       </div>
     );
   }
@@ -238,11 +244,12 @@ export default function BookingForm() {
             Bordet är bokat!
           </h2>
           <p className="mt-4 text-ink/80 leading-relaxed">
-            En bekräftelse har skickats till din mail. Du får också en
-            påminnelse dagen innan besöket.
+            En bekräftelse har skickats till din mail — där finns också
+            en länk där du själv kan ändra eller avboka bordet, när du
+            vill. Du får också en påminnelse dagen innan besöket.
           </p>
           <p className="mt-4 text-ink/80 leading-relaxed">
-            Vid frågor eller om ni behöver ändra bokningen, kontakta oss på{" "}
+            Andra frågor? Kontakta oss på{" "}
             <a
               className="underline decoration-gold"
               href={`mailto:${settings.contactEmail}`}
@@ -251,6 +258,12 @@ export default function BookingForm() {
             </a>
             .
           </p>
+          <a
+            href="/"
+            className="inline-block mt-6 text-sm underline decoration-dotted text-sage hover:text-ink"
+          >
+            ← Tillbaka till bokningssidan
+          </a>
         </div>
         <div className="lg:col-span-2">
           <TicketPreview
