@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import type { Booking, GroupRequest } from "@prisma/client";
+import type { Booking, GroupRequest, WaitlistEntry } from "@prisma/client";
 import type { AppSettings } from "./settings";
 
 function getResend(): Resend | null {
@@ -204,6 +204,41 @@ export async function sendGroupRequestReceived(
     from: fromAddress(settings),
     to: request.email,
     subject: `Vi har tagit emot er förfrågan — ${formatDateSwedish(request.date)}`,
+    html,
+  });
+}
+
+export async function sendWaitlistSpotAvailable(
+  entry: WaitlistEntry,
+  settings: AppSettings
+) {
+  const resend = getResend();
+  if (!resend) return;
+
+  const claimUrl = `${siteBaseUrl()}/vantelista/${entry.id}?token=${entry.claimToken}`;
+
+  const html = wrapTemplate(
+    "En plats har blivit ledig!",
+    `
+      <p>Hej ${escapeHtml(entry.name)},</p>
+      <p>Ni stod i kö hos ${escapeHtml(settings.restaurantName)} för en tid som nu blivit ledig:</p>
+      <table style="width:100%; border-collapse: collapse; margin: 16px 0;">
+        <tr><td style="padding:4px 0; color:#647459;">Dag</td><td style="padding:4px 0; text-align:right; font-weight:600;">${formatDateSwedish(entry.date)}</td></tr>
+        <tr><td style="padding:4px 0; color:#647459;">Tid</td><td style="padding:4px 0; text-align:right; font-weight:600;">${entry.timeSlot}</td></tr>
+        <tr><td style="padding:4px 0; color:#647459;">Antal personer</td><td style="padding:4px 0; text-align:right; font-weight:600;">${entry.partySize}</td></tr>
+      </table>
+      <p>Platsen är inte bokad än — klicka nedan för att slutföra bokningen. Först till kvarn, så vänta inte för länge.</p>
+      <p style="margin: 20px 0 0;">
+        <a href="${claimUrl}" style="display:inline-block; background:#16241C; color:#F1EEE3; text-decoration:none; padding:10px 22px; border-radius:4px; font-size:13px; font-weight:600;">Boka platsen nu</a>
+      </p>
+    `,
+    settings
+  );
+
+  await resend.emails.send({
+    from: fromAddress(settings),
+    to: entry.email,
+    subject: `En plats har blivit ledig — ${formatDateSwedish(entry.date)} kl ${entry.timeSlot}`,
     html,
   });
 }

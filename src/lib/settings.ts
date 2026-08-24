@@ -17,7 +17,6 @@ export type TableType = {
 export type AppSettings = {
   id: number;
   systemOpen: boolean;
-  openDays: number[]; // 0=sön ... 6=lör
   sittings: string[]; // ["11:30","12:30"]
   sittingWindowMinutes: number;
   slotIntervalMinutes: number;
@@ -33,7 +32,6 @@ export type AppSettings = {
 export type PublicSettings = Pick<
   AppSettings,
   | "systemOpen"
-  | "openDays"
   | "sittings"
   | "maxOnlinePartySize"
   | "contactEmail"
@@ -44,7 +42,6 @@ export type PublicSettings = Pick<
 function toAppSettings(row: {
   id: number;
   systemOpen: boolean;
-  openDaysJson: string;
   sittingsJson: string;
   sittingWindowMinutes: number;
   slotIntervalMinutes: number;
@@ -58,7 +55,6 @@ function toAppSettings(row: {
   return {
     id: row.id,
     systemOpen: row.systemOpen,
-    openDays: JSON.parse(row.openDaysJson),
     sittings: JSON.parse(row.sittingsJson),
     sittingWindowMinutes: row.sittingWindowMinutes,
     slotIntervalMinutes: row.slotIntervalMinutes,
@@ -83,7 +79,6 @@ export async function getSettings(): Promise<AppSettings> {
 export function toPublicSettings(settings: AppSettings): PublicSettings {
   return {
     systemOpen: settings.systemOpen,
-    openDays: settings.openDays,
     sittings: settings.sittings,
     maxOnlinePartySize: settings.maxOnlinePartySize,
     contactEmail: settings.contactEmail,
@@ -94,7 +89,6 @@ export function toPublicSettings(settings: AppSettings): PublicSettings {
 
 export type SettingsUpdateInput = Partial<{
   systemOpen: boolean;
-  openDays: number[];
   sittings: string[];
   sittingWindowMinutes: number;
   slotIntervalMinutes: number;
@@ -113,8 +107,6 @@ export async function updateSettings(
 
   const data: Record<string, unknown> = {};
   if (input.systemOpen !== undefined) data.systemOpen = input.systemOpen;
-  if (input.openDays !== undefined)
-    data.openDaysJson = JSON.stringify(input.openDays);
   if (input.sittings !== undefined)
     data.sittingsJson = JSON.stringify(input.sittings);
   if (input.sittingWindowMinutes !== undefined)

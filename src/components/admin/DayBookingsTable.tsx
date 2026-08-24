@@ -26,8 +26,9 @@ type Props = {
   bookings: Booking[]; // redan filtrerat till EN dag
   sittings: string[]; // så tomma sittningar också visas
   tableTypes: TableType[];
-  onEdit: (booking: Booking) => void;
-  onCancel: (id: string) => void;
+  onEdit?: (booking: Booking) => void;
+  // Utskriftsvänligt/läsläge — döljer Redigera/Avboka-kolumnen helt.
+  readOnly?: boolean;
 };
 
 function tableTypeLabel(tableTypeId: string, tableTypes: TableType[]): string {
@@ -40,9 +41,10 @@ export default function DayBookingsTable({
   sittings,
   tableTypes,
   onEdit,
-  onCancel,
+  readOnly,
 }: Props) {
   const active = bookings.filter((b) => b.status !== "cancelled");
+  const colCount = readOnly ? 8 : 9;
 
   const sittingGroups = sittings.map((sitting) => {
     const list = active
@@ -66,8 +68,9 @@ export default function DayBookingsTable({
             <Th>Bord</Th>
             <Th>Telefon</Th>
             <Th>Mail</Th>
+            <Th>Allergier</Th>
             <Th>Anteckning</Th>
-            <Th></Th>
+            {!readOnly && <Th></Th>}
           </tr>
         </thead>
         <tbody>
@@ -79,7 +82,8 @@ export default function DayBookingsTable({
               capacity={capacity}
               tableTypes={tableTypes}
               onEdit={onEdit}
-              onCancel={onCancel}
+              readOnly={readOnly}
+              colCount={colCount}
             />
           ))}
         </tbody>
@@ -94,19 +98,21 @@ function SittingRows({
   capacity,
   tableTypes,
   onEdit,
-  onCancel,
+  readOnly,
+  colCount,
 }: {
   sitting: string;
   list: Booking[];
   capacity: { label: string; booked: number; total: number }[];
   tableTypes: TableType[];
-  onEdit: (booking: Booking) => void;
-  onCancel: (id: string) => void;
+  onEdit?: (booking: Booking) => void;
+  readOnly?: boolean;
+  colCount: number;
 }) {
   return (
     <>
       <tr className="border-t border-ink/10 bg-paper-50">
-        <td colSpan={8} className="px-3 py-1.5">
+        <td colSpan={colCount} className="px-3 py-1.5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <span className="font-mono text-xs uppercase tracking-widest text-ink/70">
               {sitting}-passet
@@ -121,7 +127,7 @@ function SittingRows({
       </tr>
       {list.length === 0 ? (
         <tr className="border-t border-ink/5">
-          <td colSpan={8} className="px-3 py-2 text-xs text-sage">
+          <td colSpan={colCount} className="px-3 py-2 text-xs text-sage">
             Inga bokningar.
           </td>
         </tr>
@@ -141,25 +147,24 @@ function SittingRows({
             <Td>{tableTypeLabel(b.tableTypeId, tableTypes)}</Td>
             <Td>{b.phone}</Td>
             <Td>{b.email}</Td>
+            <Td className="max-w-[160px] truncate" title={b.allergies}>
+              {b.allergies || "—"}
+            </Td>
             <Td className="max-w-[160px] truncate" title={b.note}>
               {b.note || "—"}
             </Td>
-            <Td>
-              <div className="flex gap-3 whitespace-nowrap">
-                <button
-                  onClick={() => onEdit(b)}
-                  className="text-ink underline decoration-dotted text-xs"
-                >
-                  Redigera
-                </button>
-                <button
-                  onClick={() => onCancel(b.id)}
-                  className="text-brick underline decoration-dotted text-xs"
-                >
-                  Avboka
-                </button>
-              </div>
-            </Td>
+            {!readOnly && (
+              <Td>
+                <div className="flex gap-3 whitespace-nowrap">
+                  <button
+                    onClick={() => onEdit?.(b)}
+                    className="text-ink underline decoration-dotted text-xs"
+                  >
+                    Redigera
+                  </button>
+                </div>
+              </Td>
+            )}
           </tr>
         ))
       )}

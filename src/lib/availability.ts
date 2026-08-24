@@ -2,7 +2,13 @@ import crypto from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { getSettings, AppSettings, TableType } from "./settings";
-import { sendBookingConfirmation, sendBookingUpdated, sendGroupRequestReceived } from "./email";
+import { isDateOpenBySchedule } from "./schedule";
+import {
+  sendBookingConfirmation,
+  sendBookingUpdated,
+  sendGroupRequestReceived,
+  sendWaitlistSpotAvailable,
+} from "./email";
 import { formatInTimeZone } from "date-fns-tz";
 
 const TIMEZONE = "Europe/Stockholm";
@@ -31,18 +37,16 @@ function minutesToTime(total: number): string {
   return `${h}:${m}`;
 }
 
-function weekdayOf(dateStr: string): number {
-  // dateStr: "YYYY-MM-DD" — tolkas i restaurangens tidszon.
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const date = new Date(Date.UTC(y, m - 1, d, 12)); // mitt på dagen undviker DST-kantfall
-  return date.getUTCDay();
-}
-
-export function isDateOpen(dateStr: string, settings: AppSettings): boolean {
+// Är ett datum öppet för bokning? Kollar systemets huvudbrytare, att
+// datumet inte redan passerat, och sedan det faktiska schemat (öppna
+// perioder + undantag, se schedule.ts) — inte längre en fast veckoregel.
+export async function isDateOpen(
+  dateStr: string,
+  settings: AppSettings
+): Promise<boolean> {
   if (!settings.systemOpen) return false;
   if (dateStr < todayInStockholm()) return false;
-  const weekday = weekdayOf(dateStr);
-  return settings.openDays.includes(weekday);
+  return isDateOpenBySchedule(dateStr);
 }
 
 // Delslottarna (kvartar) inom EN sittning, t.ex. sitting="11:30" med
@@ -79,11 +83,11 @@ function findSittingForTime(
   return null;
 }
 
-export function getOpenSittings(
+export async function getOpenSittings(
   dateStr: string,
   settings: AppSettings
-): string[] {
-  if (!isDateOpen(dateStr, settings)) return [];
+): Promise<string[]> {
+  if (!(await isDateOpen(dateStr, settings))) return [];
   return settings.sittings;
 }
 
@@ -116,7 +120,7 @@ export async function getAvailabilityForDate(
   options?: { excludeBookingId?: string; partySize?: number }
 ): Promise<DateAvailability> {
   const settings = await getSettings();
-  const openSittings = getOpenSittings(dateStr, settings);
+  const openSittings = await getOpenSittings(dateStr, settings);
 
   if (openSittings.length === 0) {
     return { date: dateStr, open: false, sittingGroups: [] };
@@ -200,8 +204,8 @@ export async function getAdminCapacityForDate(
   const settings = await getSettings();
   // Kapacitetsöversikten ska funka även för dagar som är formellt
   // "stängda" (t.ex. om admin manuellt bokat in något ändå), så vi
-  // frågar inte isDateOpen här, bara vilka sittningar som är
-  // konfigurerade.
+  // frågar bara vilka sittningar som är konfigurerade — men "open"-
+  // fältet nedan visar det faktiska schemaläget för dagen.
   const sittings = settings.sittings;
 
   const bookings: { timeSlot: string; tableTypeId: string }[] =
@@ -230,7 +234,8 @@ export async function getAdminCapacityForDate(
     return { sitting, slots };
   });
 
-  return { date: dateStr, open: settings.openDays.length > 0, sittingGroups };
+  const isOpen = await isDateOpenBySchedule(dateStr);
+  return { date: dateStr, open: isOpen, sittingGroups };
 }
 
 // Väljer minsta bordstyp som rymmer sällskapet och som har lediga bord kvar.
@@ -247,6 +252,28 @@ function pickTableType(
     if ((remainingByType[candidate.id] ?? 0) > 0) return candidate;
   }
   return null;
+}
+
+// Delad kärnlogik: givet redan bokade bord i ett kvart, vilken bordstyp
+// (om någon) kan ta emot sällskapet? Delas mellan den transaktionella
+// kontrollen vid faktisk bokning och den icke-transaktionella "skulle
+// det få plats"-koll som väntelistan använder.
+function chooseTableTypeForSlot(
+  existing: { tableTypeId: string }[],
+  partySize: number,
+  settings: AppSettings
+): TableType | null {
+  if (existing.length >= settings.maxTablesPerSlot) return null;
+
+  const remainingByType: Record<string, number> = {};
+  for (const tt of settings.tableTypes) {
+    const bookedOfType = existing.filter((b) => b.tableTypeId === tt.id).length;
+    const byStock = tt.count - bookedOfType;
+    const byOwnCap =
+      tt.maxPerSlot !== undefined ? tt.maxPerSlot - bookedOfType : Infinity;
+    remainingByType[tt.id] = Math.max(0, Math.min(byStock, byOwnCap));
+  }
+  return pickTableType(partySize, settings.tableTypes, remainingByType);
 }
 
 // Kontrollerar att EN specifik tid har plats och väljer bordstyp åt
@@ -272,47 +299,43 @@ async function checkSlotAndPickTableType(
     select: { tableTypeId: true },
   });
 
-  if (existing.length >= settings.maxTablesPerSlot) {
-    throw new BookingError("Den tiden är tyvärr fullbokad. Välj en annan tid.");
-  }
-
-  const remainingByType: Record<string, number> = {};
-  for (const tt of settings.tableTypes) {
-    const bookedOfType = existing.filter(
-      (b) => b.tableTypeId === tt.id
-    ).length;
-    const byStock = tt.count - bookedOfType;
-    // Om admin satt en egen "max per kvart" för den här bordstypen
-    // (t.ex. för att inte fler än 2 fyrbord ska sitta ner samtidigt),
-    // gäller den gränsen utöver hur många bord som faktiskt finns.
-    const byOwnCap =
-      tt.maxPerSlot !== undefined ? tt.maxPerSlot - bookedOfType : Infinity;
-    remainingByType[tt.id] = Math.max(0, Math.min(byStock, byOwnCap));
-  }
-
-  const tableType = pickTableType(
-    partySize,
-    settings.tableTypes,
-    remainingByType
-  );
+  const tableType = chooseTableTypeForSlot(existing, partySize, settings);
   if (!tableType) {
+    if (existing.length >= settings.maxTablesPerSlot) {
+      throw new BookingError("Den tiden är tyvärr fullbokad. Välj en annan tid.");
+    }
     throw new BookingError(
       "Inga lediga bord för det antalet personer på den valda tiden. Välj en annan tid."
     );
   }
-
   return tableType;
 }
 
-function validateBookingInput(
+// Icke-transaktionell "skulle det få plats"-koll, för väntelistan —
+// en lätt race condition här är okej eftersom claimWaitlistSpot ändå
+// gör en riktig, transaktionell kontroll när gästen faktiskt bokar.
+async function slotHasRoomForPartySize(
+  date: string,
+  timeSlot: string,
+  partySize: number,
+  settings: AppSettings
+): Promise<boolean> {
+  const existing = await prisma.booking.findMany({
+    where: { date, timeSlot, status: "confirmed" },
+    select: { tableTypeId: true },
+  });
+  return chooseTableTypeForSlot(existing, partySize, settings) !== null;
+}
+
+async function validateBookingInput(
   date: string,
   timeSlot: string,
   partySize: number,
   allergies: string,
   allergyConsent: boolean | undefined,
   settings: AppSettings
-): string {
-  if (!isDateOpen(date, settings)) {
+): Promise<string> {
+  if (!(await isDateOpen(date, settings))) {
     throw new BookingError(
       "Det går tyvärr inte att boka den här dagen. Välj en annan dag."
     );
@@ -351,8 +374,9 @@ export type CreateBookingInput = {
 export async function createBooking(input: CreateBookingInput) {
   const settings = await getSettings();
   const allergies = (input.allergies ?? "").trim();
+  const email = input.email.trim();
 
-  const sitting = validateBookingInput(
+  const sitting = await validateBookingInput(
     input.date,
     input.timeSlot,
     input.partySize,
@@ -360,6 +384,23 @@ export async function createBooking(input: CreateBookingInput) {
     input.allergyConsent,
     settings
   );
+
+  // Dubbelbokningsskydd: om exakt samma gäst just skickade in exakt
+  // samma bokning (dubbelklick, eller "tillbaka" i webbläsaren och
+  // skicka igen) för några minuter sen, skapa ingen dubblett — låtsas
+  // att det gick bra och returnera den redan skapade bokningen.
+  const recentDuplicate = await prisma.booking.findFirst({
+    where: {
+      date: input.date,
+      timeSlot: input.timeSlot,
+      email,
+      partySize: input.partySize,
+      status: "confirmed",
+      createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (recentDuplicate) return recentDuplicate;
 
   // Transaktion: läs aktuell beläggning och skapa bokningen atomärt,
   // så att två samtidiga bokningar inte kan slå ut samma sista bord.
@@ -380,7 +421,7 @@ export async function createBooking(input: CreateBookingInput) {
         partySize: input.partySize,
         tableTypeId: tableType.id,
         name: input.name.trim(),
-        email: input.email.trim(),
+        email,
         phone: input.phone.trim(),
         allergies,
         allergyConsent: allergies.length > 0 ? Boolean(input.allergyConsent) : false,
@@ -400,6 +441,38 @@ export async function createBooking(input: CreateBookingInput) {
   return booking;
 }
 
+// Meddelar den som väntat längst i kön för en tid, om deras sällskap nu
+// får plats efter en avbokning. Meddelar bara EN i taget — nästa i kö
+// får vänta på att den här personen tackar ja (eller på nästa avbokning).
+async function notifyWaitlistOnCancellation(date: string, timeSlot: string) {
+  const settings = await getSettings();
+  const waiting = await prisma.waitlistEntry.findMany({
+    where: { date, timeSlot, status: "waiting" },
+    orderBy: { createdAt: "asc" },
+  });
+
+  for (const entry of waiting) {
+    const hasRoom = await slotHasRoomForPartySize(
+      date,
+      timeSlot,
+      entry.partySize,
+      settings
+    );
+    if (hasRoom) {
+      await prisma.waitlistEntry.update({
+        where: { id: entry.id },
+        data: { status: "notified", notifiedAt: new Date() },
+      });
+      try {
+        await sendWaitlistSpotAvailable(entry, settings);
+      } catch (err) {
+        console.error("Kunde inte skicka väntelistmail:", err);
+      }
+      return;
+    }
+  }
+}
+
 // Självbetjänad avbokning via länken i mailet. Kräver rätt cancelToken,
 // annars går det inte att avboka någon annans bokning genom att gissa id.
 export async function cancelBookingByToken(id: string, token: string) {
@@ -410,10 +483,26 @@ export async function cancelBookingByToken(id: string, token: string) {
   if (booking.status === "cancelled") {
     return booking;
   }
-  return prisma.booking.update({
+  const cancelled = await prisma.booking.update({
     where: { id },
     data: { status: "cancelled" },
   });
+  notifyWaitlistOnCancellation(cancelled.date, cancelled.timeSlot).catch((err) =>
+    console.error("Väntelista-notis misslyckades:", err)
+  );
+  return cancelled;
+}
+
+// Admin avbokar (från adminpanelen, inte via gästens egen länk).
+export async function cancelBookingAsAdmin(id: string) {
+  const cancelled = await prisma.booking.update({
+    where: { id },
+    data: { status: "cancelled" },
+  });
+  notifyWaitlistOnCancellation(cancelled.date, cancelled.timeSlot).catch((err) =>
+    console.error("Väntelista-notis misslyckades:", err)
+  );
+  return cancelled;
 }
 
 export type UpdateBookingInput = CreateBookingInput;
@@ -439,7 +528,7 @@ export async function updateBookingByToken(
   const settings = await getSettings();
   const allergies = (input.allergies ?? "").trim();
 
-  const sitting = validateBookingInput(
+  const sitting = await validateBookingInput(
     input.date,
     input.timeSlot,
     input.partySize,
@@ -504,7 +593,10 @@ export type AdminCreateBookingInput = {
 // Admin kan boka in gäster direkt (telefonsamtal, eller en förfrågan
 // från ett stort sällskap som bokats in). Till skillnad från
 // createBooking gäller INTE maxOnlinePartySize här — admin får boka in
-// sällskap av vilken storlek som helst.
+// sällskap av vilken storlek som helst. Datumets schema-status kollas
+// inte heller i automatiskt läge på samma strikta sätt (admin kan boka
+// in något administrativt även på en dag som formellt är stängd, om de
+// aktivt vill det via manuellt läge).
 export async function createBookingAsAdmin(input: AdminCreateBookingInput) {
   const settings = await getSettings();
   const allergies = (input.allergies ?? "").trim();
@@ -522,10 +614,6 @@ export async function createBookingAsAdmin(input: AdminCreateBookingInput) {
   let booking;
 
   if (input.manual) {
-    // Ingen kapacitetskontroll, inget automatiskt bordsval — admin
-    // ansvarar själv för att platsen faktiskt finns (t.ex. ihopskjutna
-    // bord). Sittningen sätts om tiden råkar matcha en vanlig sittning,
-    // annars "manuell".
     const sitting = findSittingForTime(input.timeSlot, settings) ?? "manuell";
     booking = await prisma.booking.create({
       data: {
@@ -545,7 +633,7 @@ export async function createBookingAsAdmin(input: AdminCreateBookingInput) {
       },
     });
   } else {
-    if (!isDateOpen(input.date, settings)) {
+    if (!(await isDateOpen(input.date, settings))) {
       throw new BookingError("Det går inte att boka den här dagen.");
     }
     const sitting = findSittingForTime(input.timeSlot, settings);
@@ -629,6 +717,50 @@ export async function createGroupRequest(input: CreateGroupRequestInput) {
   }
 
   return request;
+}
+
+export type UpdateGroupRequestInput = {
+  date: string;
+  sitting: string;
+  partySize: number;
+  name: string;
+  email: string;
+  phone: string;
+  message?: string;
+};
+
+// Redigerar en förfrågans EGNA fält — bara relevant om den ännu inte
+// är kopplad till en riktig bokning (annars ska den riktiga bokningen
+// redigeras istället, se AdminDashboard-logiken i gränssnittet).
+export async function updateGroupRequest(
+  id: string,
+  input: UpdateGroupRequestInput
+) {
+  const existing = await prisma.groupRequest.findUnique({ where: { id } });
+  if (!existing) {
+    throw new BookingError("Förfrågan kunde inte hittas.");
+  }
+  if (existing.linkedBookingId) {
+    throw new BookingError(
+      "Den här förfrågan är redan kopplad till en bokning — redigera bokningen istället."
+    );
+  }
+  if (input.partySize < 1) {
+    throw new BookingError("Antal personer måste vara minst 1.");
+  }
+
+  return prisma.groupRequest.update({
+    where: { id },
+    data: {
+      date: input.date,
+      sitting: input.sitting,
+      partySize: input.partySize,
+      name: input.name.trim(),
+      email: input.email.trim(),
+      phone: input.phone.trim(),
+      message: (input.message ?? "").trim(),
+    },
+  });
 }
 
 export type AdminUpdateBookingInput = {
@@ -731,6 +863,85 @@ export async function updateBookingAsAdmin(
     await sendBookingUpdated(booking, settings);
   } catch (err) {
     console.error("Kunde inte skicka ändringsmail:", err);
+  }
+
+  return booking;
+}
+
+export type JoinWaitlistInput = {
+  date: string;
+  timeSlot: string;
+  partySize: number;
+  name: string;
+  email: string;
+  phone: string;
+};
+
+// Gäst ställer sig i kö för en fullbokad tid.
+export async function joinWaitlist(input: JoinWaitlistInput) {
+  if (input.partySize < 1) {
+    throw new BookingError("Antal personer måste vara minst 1.");
+  }
+  return prisma.waitlistEntry.create({
+    data: {
+      date: input.date,
+      timeSlot: input.timeSlot,
+      partySize: input.partySize,
+      name: input.name.trim(),
+      email: input.email.trim(),
+      phone: input.phone.trim(),
+      claimToken: crypto.randomBytes(20).toString("hex"),
+    },
+  });
+}
+
+// Gästen klickar länken i väntelist-mailet och slutför bokningen.
+export async function claimWaitlistSpot(id: string, token: string) {
+  const entry = await prisma.waitlistEntry.findUnique({ where: { id } });
+  if (!entry || entry.claimToken !== token) {
+    throw new BookingError("Kunde inte hittas.");
+  }
+  if (entry.status === "booked") {
+    throw new BookingError("Den här platsen är redan bokad.");
+  }
+
+  const settings = await getSettings();
+  if (!(await isDateOpen(entry.date, settings))) {
+    throw new BookingError("Det går tyvärr inte att boka den här dagen längre.");
+  }
+
+  const booking = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const tableType = await checkSlotAndPickTableType(
+      tx,
+      entry.date,
+      entry.timeSlot,
+      entry.partySize,
+      settings
+    );
+    return tx.booking.create({
+      data: {
+        date: entry.date,
+        sitting: findSittingForTime(entry.timeSlot, settings) ?? "manuell",
+        timeSlot: entry.timeSlot,
+        partySize: entry.partySize,
+        tableTypeId: tableType.id,
+        name: entry.name,
+        email: entry.email,
+        phone: entry.phone,
+        cancelToken: crypto.randomBytes(20).toString("hex"),
+      },
+    });
+  });
+
+  await prisma.waitlistEntry.update({
+    where: { id },
+    data: { status: "booked" },
+  });
+
+  try {
+    await sendBookingConfirmation(booking, settings);
+  } catch (err) {
+    console.error("Kunde inte skicka bekräftelsemail:", err);
   }
 
   return booking;

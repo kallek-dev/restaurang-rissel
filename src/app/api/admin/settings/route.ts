@@ -20,7 +20,6 @@ const tableTypeSchema = z.object({
 
 const updateSchema = z.object({
   systemOpen: z.boolean().optional(),
-  openDays: z.array(z.number().int().min(0).max(6)).optional(),
   sittings: z.array(z.string().regex(/^\d{2}:\d{2}$/)).optional(),
   sittingWindowMinutes: z.number().int().min(15).max(480).optional(),
   slotIntervalMinutes: z.number().int().min(5).max(120).optional(),

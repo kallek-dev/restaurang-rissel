@@ -5,10 +5,10 @@ import TicketPreview from "./TicketPreview";
 import Calendar from "./Calendar";
 import SlotPicker from "./SlotPicker";
 import GroupRequestForm from "./GroupRequestForm";
+import WaitlistForm from "./WaitlistForm";
 
 type PublicSettings = {
   systemOpen: boolean;
-  openDays: number[];
   sittings: string[];
   maxOnlinePartySize: number;
   contactEmail: string;
@@ -32,8 +32,6 @@ type DateAvailability = {
   sittingGroups: SittingGroup[];
 };
 
-const WEEKDAY_SHORT = ["Sön", "Mån", "Tis", "Ons", "Tor", "Fre", "Lör"];
-
 type SubmitState =
   | { status: "idle" }
   | { status: "submitting" }
@@ -56,6 +54,7 @@ export default function BookingForm() {
   );
   const [loadingAvailability, setLoadingAvailability] = useState(false);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [waitlistTime, setWaitlistTime] = useState<string | null>(null);
 
   const [partySize, setPartySize] = useState<number>(2);
   const [largeParty, setLargeParty] = useState(false);
@@ -88,6 +87,7 @@ export default function BookingForm() {
     }
     setLoadingAvailability(true);
     setSelectedTime(null);
+    setWaitlistTime(null);
     const params = new URLSearchParams({ date: selectedDate });
     if (!largeParty) params.set("partySize", String(partySize));
     fetch(`/api/availability?${params.toString()}`)
@@ -107,6 +107,7 @@ export default function BookingForm() {
   function selectLargeParty() {
     setLargeParty(true);
     setSelectedTime(null);
+    setWaitlistTime(null);
   }
 
   const needsAllergyConsent = allergies.trim().length > 0;
@@ -288,16 +289,9 @@ export default function BookingForm() {
           <Calendar
             selectedDate={selectedDate}
             onSelect={setSelectedDate}
-            openDays={settings.openDays}
           />
           <p className="text-xs text-sage mt-2">
-            Vi har öppet{" "}
-            {settings.openDays
-              .slice()
-              .sort()
-              .map((w) => WEEKDAY_SHORT[w])
-              .join(", ")}
-            .
+            Nedtonade dagar går inte att boka.
           </p>
         </section>
 
@@ -327,7 +321,6 @@ export default function BookingForm() {
             <GroupRequestForm
               defaultDate={selectedDate}
               sittings={settings.sittings}
-              openDays={settings.openDays}
               maxOnline={maxOnline}
               onSubmitted={() => setGroupRequestSubmitted(true)}
             />
@@ -348,7 +341,19 @@ export default function BookingForm() {
               <SlotPicker
                 groups={availability.sittingGroups}
                 selectedTime={selectedTime}
-                onSelect={setSelectedTime}
+                onSelect={(time) => {
+                  setSelectedTime(time);
+                  setWaitlistTime(null);
+                }}
+                onSelectFull={(time) => setWaitlistTime(time)}
+              />
+            )}
+            {waitlistTime && selectedDate && (
+              <WaitlistForm
+                date={selectedDate}
+                timeSlot={waitlistTime}
+                partySize={partySize}
+                onClose={() => setWaitlistTime(null)}
               />
             )}
           </section>

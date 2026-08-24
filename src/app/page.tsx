@@ -14,10 +14,19 @@ export default function Home() {
           sizes="100vw"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-ink/70 via-ink/10 to-transparent" />
-        <p className="absolute bottom-2 right-3 text-[11px] text-paper/80 font-mono">
-          Franska Ångkvarnen, Ystad — Risselmagasinet är den enda byggnad
-          som finns kvar idag. Foto: Samuel Moses Marcus, ca 1860–70-tal.
-        </p>
+        <div className="absolute bottom-2 right-3 text-right">
+          <p className="text-[11px] text-paper/80 font-mono">
+            Franska Ångkvarnen, Ystad, ca 1860–70-tal. Risselmagasinet är
+            en del av kvarnanläggningen som under 1970-talet ersattes av
+            Parkskolan och Stadsbiblioteket. Foto: S. M. Marcus.
+          </p>
+          <a
+            href="/historia"
+            className="text-[11px] text-paper underline decoration-dotted hover:decoration-solid"
+          >
+            Läs mer om historien
+          </a>
+        </div>
       </div>
 
       <header className="border-b border-ink/10">

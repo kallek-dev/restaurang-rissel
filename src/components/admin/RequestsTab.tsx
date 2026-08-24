@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type GroupRequest = {
+export type GroupRequest = {
   id: string;
   date: string;
   sitting: string;
@@ -12,11 +12,13 @@ type GroupRequest = {
   phone: string;
   message: string;
   status: string;
+  linkedBookingId: string | null;
   createdAt: string;
 };
 
 type Props = {
   onBookIn: (request: GroupRequest) => void;
+  onEditRequest: (request: GroupRequest) => void;
 };
 
 const WEEKDAY_LABELS = ["Sön", "Mån", "Tis", "Ons", "Tor", "Fre", "Lör"];
@@ -26,7 +28,7 @@ function formatDateLabel(dateStr: string): string {
   return `${WEEKDAY_LABELS[weekday]} ${d}/${m}`;
 }
 
-export default function RequestsTab({ onBookIn }: Props) {
+export default function RequestsTab({ onBookIn, onEditRequest }: Props) {
   const [requests, setRequests] = useState<GroupRequest[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [showHandled, setShowHandled] = useState(false);
@@ -47,11 +49,11 @@ export default function RequestsTab({ onBookIn }: Props) {
       .finally(() => setLoading(false));
   }
 
-  async function markHandled(id: string) {
+  async function setStatus(id: string, status: "handled" | "pending") {
     await fetch(`/api/admin/group-requests/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "handled" }),
+      body: JSON.stringify({ status }),
     });
     load();
   }
@@ -112,27 +114,50 @@ export default function RequestsTab({ onBookIn }: Props) {
                   </p>
                 )}
               </div>
-              {r.status === "pending" && (
-                <div className="flex gap-2 shrink-0">
-                  <button
-                    onClick={() => onBookIn(r)}
-                    className="px-4 py-2 bg-ink text-paper text-xs font-display uppercase tracking-wide rounded-sm"
-                  >
-                    Boka in
-                  </button>
-                  <button
-                    onClick={() => markHandled(r.id)}
-                    className="px-4 py-2 border border-ink/20 text-xs font-display uppercase tracking-wide rounded-sm"
-                  >
-                    Markera hanterad
-                  </button>
-                </div>
-              )}
-              {r.status === "handled" && (
-                <span className="text-xs uppercase tracking-widest text-sage shrink-0">
-                  Hanterad
-                </span>
-              )}
+              <div className="flex flex-col items-end gap-2 shrink-0">
+                {r.status === "pending" ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => onBookIn(r)}
+                      className="px-4 py-2 bg-ink text-paper text-xs font-display uppercase tracking-wide rounded-sm"
+                    >
+                      Boka in
+                    </button>
+                    <button
+                      onClick={() => onEditRequest(r)}
+                      className="px-4 py-2 border border-ink/20 text-xs font-display uppercase tracking-wide rounded-sm"
+                    >
+                      Redigera
+                    </button>
+                    <button
+                      onClick={() => setStatus(r.id, "handled")}
+                      className="px-4 py-2 border border-ink/20 text-xs font-display uppercase tracking-wide rounded-sm"
+                    >
+                      Markera hanterad
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-right">
+                    <span className="text-xs uppercase tracking-widest text-sage">
+                      Hanterad
+                    </span>
+                    <div className="flex gap-3 mt-1 justify-end">
+                      <button
+                        onClick={() => onEditRequest(r)}
+                        className="text-ink underline decoration-dotted text-xs"
+                      >
+                        Redigera
+                      </button>
+                      <button
+                        onClick={() => setStatus(r.id, "pending")}
+                        className="text-sage underline decoration-dotted text-xs hover:text-ink"
+                      >
+                        Ångra
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ))}

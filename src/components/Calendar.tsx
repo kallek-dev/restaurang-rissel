@@ -17,13 +17,6 @@ function todayLocalStr(): string {
   const d = new Date();
   return localDateStr(d.getFullYear(), d.getMonth(), d.getDate());
 }
-function isSameOrAfterCurrentMonth(year: number, month: number): boolean {
-  const now = new Date();
-  return (
-    year > now.getFullYear() ||
-    (year === now.getFullYear() && month >= now.getMonth())
-  );
-}
 function monthOf(dateStr: string): { year: number; month: number } {
   const [y, m] = dateStr.split("-").map(Number);
   return { year: y, month: m - 1 };
@@ -32,21 +25,24 @@ function monthOf(dateStr: string): { year: number; month: number } {
 type Props = {
   selectedDate: string | null;
   onSelect: (date: string) => void;
-  openDays: number[];
   // Admin-läge: alla dagar går att klicka (även stängda/förflutna,
-  // nedtonade men inte spärrade) — gästkalendern spärrar dem som vanligt.
+  // nedtonade men inte spärrade), och man kan bläddra bakåt förbi
+  // nuvarande månad — gästkalendern spärrar båda.
   allowAllDays?: boolean;
+  // Kallas när användaren aktivt bläddrar med ‹ › (inte när kalendern
+  // bara följer med ett redan valt datum). Används t.ex. för att växla
+  // till månadsvy i admin när man bläddrar utan att klicka en dag.
+  onMonthChange?: (year: number, month: number) => void;
 };
 
-export default function Calendar({ selectedDate, onSelect, openDays, allowAllDays }: Props) {
+export default function Calendar({ selectedDate, onSelect, allowAllDays, onMonthChange }: Props) {
   const [calendarMonth, setCalendarMonth] = useState(() => {
     if (selectedDate) return monthOf(selectedDate);
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() };
   });
+  const [openDates, setOpenDates] = useState<Set<string> | null>(null);
 
-  // Hoppa till rätt månad om det valda datumet ändras utifrån (t.ex.
-  // en "Idag"-genväg), så kalendern inte visar fel månad.
   useEffect(() => {
     if (!selectedDate) return;
     const target = monthOf(selectedDate);
@@ -54,6 +50,22 @@ export default function Calendar({ selectedDate, onSelect, openDays, allowAllDay
       cur.year === target.year && cur.month === target.month ? cur : target
     );
   }, [selectedDate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setOpenDates(null);
+    fetch(`/api/open-dates?year=${calendarMonth.year}&month=${calendarMonth.month + 1}`)
+      .then((r) => r.json())
+      .then((data: { openDates: string[] }) => {
+        if (!cancelled) setOpenDates(new Set(data.openDates ?? []));
+      })
+      .catch(() => {
+        if (!cancelled) setOpenDates(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [calendarMonth]);
 
   function goPrevMonth() {
     setCalendarMonth((cur) => {
@@ -63,7 +75,14 @@ export default function Calendar({ selectedDate, onSelect, openDays, allowAllDay
         month = 11;
         year -= 1;
       }
-      if (!allowAllDays && !isSameOrAfterCurrentMonth(year, month)) return cur;
+      if (!allowAllDays) {
+        const now = new Date();
+        const isBeforeCurrentMonth =
+          year < now.getFullYear() ||
+          (year === now.getFullYear() && month < now.getMonth());
+        if (isBeforeCurrentMonth) return cur;
+      }
+      onMonthChange?.(year, month);
       return { year, month };
     });
   }
@@ -75,6 +94,7 @@ export default function Calendar({ selectedDate, onSelect, openDays, allowAllDay
         month = 0;
         year += 1;
       }
+      onMonthChange?.(year, month);
       return { year, month };
     });
   }
@@ -84,17 +104,29 @@ export default function Calendar({ selectedDate, onSelect, openDays, allowAllDay
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = todayLocalStr();
 
+  const canGoPrev =
+    allowAllDays ||
+    (() => {
+      const now = new Date();
+      const prevMonth = month === 0 ? 11 : month - 1;
+      const prevYear = month === 0 ? year - 1 : year;
+      return !(
+        prevYear < now.getFullYear() ||
+        (prevYear === now.getFullYear() && prevMonth < now.getMonth())
+      );
+    })();
+
   const cells: React.ReactNode[] = [];
   for (let i = 0; i < firstWeekday; i++) {
     cells.push(<div key={`empty-${i}`} />);
   }
   for (let day = 1; day <= daysInMonth; day++) {
     const dateStr = localDateStr(year, month, day);
-    const weekday = new Date(year, month, day).getDay();
     const isPast = dateStr < today;
-    const isClosed = !openDays.includes(weekday);
+    const isOpenDay = openDates?.has(dateStr) ?? false;
+    const isClosed = !isOpenDay;
     const disabled = allowAllDays ? false : isPast || isClosed;
-    const muted = isPast || isClosed; // nedtonad även när klickbar i admin-läge
+    const muted = isPast || isClosed;
     const isToday = dateStr === today;
     const isSelected = selectedDate === dateStr;
 
@@ -102,7 +134,7 @@ export default function Calendar({ selectedDate, onSelect, openDays, allowAllDay
       <button
         type="button"
         key={dateStr}
-        disabled={disabled}
+        disabled={disabled || openDates === null}
         onClick={() => onSelect(dateStr)}
         className={[
           "relative aspect-square flex items-center justify-center rounded-sm text-sm font-semibold border transition-colors",
@@ -128,13 +160,7 @@ export default function Calendar({ selectedDate, onSelect, openDays, allowAllDay
         <button
           type="button"
           onClick={goPrevMonth}
-          disabled={
-            !allowAllDays &&
-            !isSameOrAfterCurrentMonth(
-              month === 0 ? year - 1 : year,
-              month === 0 ? 11 : month - 1
-            )
-          }
+          disabled={!canGoPrev}
           className="w-8 h-8 border border-ink/20 rounded-sm text-ink disabled:opacity-25 disabled:cursor-not-allowed hover:border-ink/50"
         >
           ‹
@@ -161,6 +187,9 @@ export default function Calendar({ selectedDate, onSelect, openDays, allowAllDay
         ))}
       </div>
       <div className="grid grid-cols-7 gap-1">{cells}</div>
+      {openDates === null && (
+        <p className="text-xs text-sage mt-2 font-mono">Laddar…</p>
+      )}
     </div>
   );
 }

@@ -18,7 +18,6 @@ type BookingInfo = {
 
 type PublicSettings = {
   systemOpen: boolean;
-  openDays: number[];
   maxOnlinePartySize: number;
   contactEmail: string;
   retentionMonths: number;
@@ -282,7 +281,6 @@ export default function ManageBookingPage() {
                           setDate(d);
                           setTimeSlot(null);
                         }}
-                        openDays={settings.openDays}
                       />
                     </div>
 

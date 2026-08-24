@@ -58,6 +58,7 @@ export default function ManualBookingModal({ settings, prefill, editingBooking, 
 
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{
     created: { date: string; timeSlot: string }[];
@@ -165,6 +166,27 @@ export default function ManualBookingModal({ settings, prefill, editingBooking, 
       setError(err instanceof Error ? err.message : "Något gick fel.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleCancelBooking() {
+    if (!editingBooking) return;
+    if (!confirm(`Avboka bordet för ${editingBooking.name}?`)) return;
+    setCancelling(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/bookings/${editingBooking.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "cancelled" }),
+      });
+      if (!res.ok) throw new Error("Kunde inte avboka.");
+      onBooked();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Något gick fel.");
+    } finally {
+      setCancelling(false);
     }
   }
 
@@ -446,21 +468,39 @@ export default function ManualBookingModal({ settings, prefill, editingBooking, 
             </div>
 
             {isEditing && editingBooking && (
-              <div className="pt-4 border-t border-ink/10">
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={deleting}
-                  className="text-brick underline decoration-dotted text-xs disabled:opacity-40"
-                >
-                  {deleting ? "Raderar…" : "Radera bokningen permanent"}
-                </button>
-                <p className="text-xs text-sage mt-1">
-                  Tar bort bokningen helt, går inte att ångra. Avboka
-                  ovan räcker oftast — det här behövs bara om gästens
-                  uppgifter måste tas bort direkt istället för att
-                  vänta på den automatiska GDPR-städningen.
-                </p>
+              <div className="pt-4 border-t border-ink/10 space-y-3">
+                {editingBooking.status !== "cancelled" && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={handleCancelBooking}
+                      disabled={cancelling}
+                      className="text-brick underline decoration-dotted text-xs disabled:opacity-40"
+                    >
+                      {cancelling ? "Avbokar…" : "Avboka bokningen"}
+                    </button>
+                    <p className="text-xs text-sage mt-1">
+                      Bordet blir ledigt igen. Gästen behåller sina
+                      uppgifter i systemet.
+                    </p>
+                  </div>
+                )}
+                <div>
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="text-brick underline decoration-dotted text-xs disabled:opacity-40"
+                  >
+                    {deleting ? "Raderar…" : "Radera bokningen permanent"}
+                  </button>
+                  <p className="text-xs text-sage mt-1">
+                    Tar bort bokningen helt, går inte att ångra. Avboka
+                    ovan räcker oftast — det här behövs bara om gästens
+                    uppgifter måste tas bort direkt istället för att
+                    vänta på den automatiska GDPR-städningen.
+                  </p>
+                </div>
               </div>
             )}
           </form>

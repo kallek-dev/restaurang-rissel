@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import ScheduleSettings from "./ScheduleSettings";
 
 type TableType = {
   id: string;
@@ -14,7 +15,6 @@ type TableType = {
 export type Settings = {
   id: number;
   systemOpen: boolean;
-  openDays: number[];
   sittings: string[];
   sittingWindowMinutes: number;
   slotIntervalMinutes: number;
@@ -26,16 +26,6 @@ export type Settings = {
   restaurantName: string;
 };
 
-const WEEKDAYS = [
-  { value: 1, label: "Mån" },
-  { value: 2, label: "Tis" },
-  { value: 3, label: "Ons" },
-  { value: 4, label: "Tor" },
-  { value: 5, label: "Fre" },
-  { value: 6, label: "Lör" },
-  { value: 0, label: "Sön" },
-];
-
 type Props = {
   settings: Settings;
   saveSettings: (patch: Partial<Settings>) => void;
@@ -44,15 +34,7 @@ type Props = {
 };
 
 export default function SettingsTab({ settings, saveSettings, saving, saved }: Props) {
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-
-  function toggleWeekday(day: number) {
-    const has = settings.openDays.includes(day);
-    const next = has
-      ? settings.openDays.filter((d) => d !== day)
-      : [...settings.openDays, day];
-    saveSettings({ openDays: next });
-  }
+  const [advancedOpen, setAdvancedOpen] = useState(true);
 
   function updateTableTypeCount(id: string, count: number) {
     const next = settings.tableTypes.map((t) =>
@@ -92,36 +74,19 @@ export default function SettingsTab({ settings, saveSettings, saving, saved }: P
           />
         </div>
 
-        <div className="mt-6">
-          <p className="text-xs uppercase tracking-widest text-sage mb-2">
-            Öppna dagar
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {WEEKDAYS.map((w) => {
-              const active = settings.openDays.includes(w.value);
-              return (
-                <button
-                  key={w.value}
-                  onClick={() => toggleWeekday(w.value)}
-                  className={[
-                    "px-4 py-2 rounded-sm border text-sm font-medium transition-colors",
-                    active
-                      ? "bg-ink text-paper border-ink"
-                      : "border-ink/20 text-ink/50 hover:border-ink/50",
-                  ].join(" ")}
-                >
-                  {w.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         {(saving || saved) && (
           <p className="text-xs text-sage mt-4 font-mono">
             {saving ? "Sparar…" : "Sparat ✓"}
           </p>
         )}
+      </section>
+
+      {/* Öppettider */}
+      <section className="border border-ink/10 rounded-sm p-6">
+        <h2 className="font-display uppercase text-lg tracking-wide mb-6">
+          Öppettider
+        </h2>
+        <ScheduleSettings />
       </section>
 
       {/* Avancerat */}
@@ -151,7 +116,7 @@ export default function SettingsTab({ settings, saveSettings, saving, saved }: P
               />
             </SettingsGroup>
 
-            <SettingsGroup title="Öppettider & sittningar">
+            <SettingsGroup title="Sittningstider">
               <TextField
                 label="Sittningstider (kommaseparerat, t.ex. 11:30,12:30)"
                 value={settings.sittings.join(",")}

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { updateBookingAsAdmin, BookingError } from "@/lib/availability";
+import { updateBookingAsAdmin, cancelBookingAsAdmin, BookingError } from "@/lib/availability";
 
 const editSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Ogiltigt datum."),
@@ -16,6 +16,17 @@ const editSchema = z.object({
   manual: z.boolean().optional().default(false),
 });
 
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const booking = await prisma.booking.findUnique({ where: { id: params.id } });
+  if (!booking) {
+    return NextResponse.json({ error: "Bokningen kunde inte hittas." }, { status: 404 });
+  }
+  return NextResponse.json(booking);
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -27,7 +38,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Ogiltig förfrågan." }, { status: 400 });
   }
 
-  // Enkelt läge: bara { status } — används av "Avboka"-knappen i listorna.
+  // Enkelt läge: bara { status } — används av "Avboka"-knappen.
   if (
     typeof body === "object" &&
     body !== null &&
@@ -42,6 +53,10 @@ export async function PATCH(
       );
     }
     try {
+      if (status === "cancelled") {
+        const updated = await cancelBookingAsAdmin(params.id);
+        return NextResponse.json(updated);
+      }
       const updated = await prisma.booking.update({
         where: { id: params.id },
         data: { status },

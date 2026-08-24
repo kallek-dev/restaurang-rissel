@@ -2,33 +2,16 @@
 
 import { useEffect, useState } from "react";
 import SettingsTab, { Settings } from "./SettingsTab";
-import TodayTab from "./TodayTab";
 import BookingsTab, { Booking } from "./BookingsTab";
-import RequestsTab from "./RequestsTab";
+import RequestsTab, { GroupRequest } from "./RequestsTab";
+import StatisticsTab from "./StatisticsTab";
 import ManualBookingModal, { ManualBookingPrefill } from "./ManualBookingModal";
+import EditRequestModal from "./EditRequestModal";
 
-type GroupRequest = {
-  id: string;
-  date: string;
-  sitting: string;
-  partySize: number;
-  name: string;
-  email: string;
-  phone: string;
-  message: string;
-};
-
-type Tab = "today" | "bookings" | "requests" | "settings";
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: "today", label: "Idag" },
-  { id: "bookings", label: "Bokningar" },
-  { id: "requests", label: "Förfrågningar" },
-  { id: "settings", label: "Inställningar" },
-];
+type Tab = "bookings" | "requests" | "statistics" | "settings";
 
 export default function AdminDashboard() {
-  const [tab, setTab] = useState<Tab>("today");
+  const [tab, setTab] = useState<Tab>("bookings");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
@@ -36,16 +19,30 @@ export default function AdminDashboard() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalPrefill, setModalPrefill] = useState<ManualBookingPrefill | null>(null);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+
+  const [editingRequest, setEditingRequest] = useState<GroupRequest | null>(null);
+
   const [refreshKey, setRefreshKey] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
     loadSettings();
+    loadPendingCount();
+    const interval = setInterval(loadPendingCount, 60000); // pollar varje minut
+    return () => clearInterval(interval);
   }, []);
 
   function loadSettings() {
     fetch("/api/admin/settings")
       .then((r) => r.json())
       .then(setSettings);
+  }
+
+  function loadPendingCount() {
+    fetch("/api/admin/group-requests/pending-count")
+      .then((r) => r.json())
+      .then((data) => setPendingCount(data.count ?? 0))
+      .catch(() => {});
   }
 
   async function saveSettings(patch: Partial<Settings>) {
@@ -97,6 +94,21 @@ export default function AdminDashboard() {
     setModalOpen(true);
   }
 
+  // Redigera en förfrågan: om den redan är kopplad till en riktig
+  // bokning, öppna DEN (samma data lever bara på ett ställe) — annars
+  // redigera förfrågans egna fält.
+  async function openEditRequest(request: GroupRequest) {
+    if (request.linkedBookingId) {
+      const res = await fetch(`/api/admin/bookings/${request.linkedBookingId}`);
+      if (res.ok) {
+        const booking = await res.json();
+        openEditBooking(booking);
+        return;
+      }
+    }
+    setEditingRequest(request);
+  }
+
   function closeModal() {
     setModalOpen(false);
     setEditingBooking(null);
@@ -104,11 +116,23 @@ export default function AdminDashboard() {
 
   function handleBooked() {
     setRefreshKey((k) => k + 1);
+    loadPendingCount();
+  }
+
+  function handleRequestSaved() {
+    setRefreshKey((k) => k + 1);
   }
 
   if (!settings) {
     return <p className="text-sage font-mono text-sm">Laddar inställningar…</p>;
   }
+
+  const TABS: { id: Tab; label: string }[] = [
+    { id: "bookings", label: "Bokningar" },
+    { id: "requests", label: "Förfrågningar" },
+    { id: "statistics", label: "Statistik" },
+    { id: "settings", label: "Inställningar" },
+  ];
 
   return (
     <div>
@@ -118,25 +142,22 @@ export default function AdminDashboard() {
             key={t.id}
             onClick={() => setTab(t.id)}
             className={[
-              "px-4 py-2 text-sm font-display uppercase tracking-wide border-b-2 -mb-px transition-colors",
+              "px-4 py-2 text-sm font-display uppercase tracking-wide border-b-2 -mb-px transition-colors flex items-center gap-1.5",
               tab === t.id
                 ? "border-ink text-ink"
                 : "border-transparent text-sage hover:text-ink",
             ].join(" ")}
           >
             {t.label}
+            {t.id === "requests" && pendingCount > 0 && (
+              <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-brick text-white text-[10px] font-mono">
+                {pendingCount}
+              </span>
+            )}
           </button>
         ))}
       </nav>
 
-      {tab === "today" && (
-        <TodayTab
-          key={`today-${refreshKey}`}
-          settings={settings}
-          onNewBooking={openNewBooking}
-          onEditBooking={openEditBooking}
-        />
-      )}
       {tab === "bookings" && (
         <BookingsTab
           key={`bookings-${refreshKey}`}
@@ -146,8 +167,13 @@ export default function AdminDashboard() {
         />
       )}
       {tab === "requests" && (
-        <RequestsTab key={`requests-${refreshKey}`} onBookIn={openBookIn} />
+        <RequestsTab
+          key={`requests-${refreshKey}`}
+          onBookIn={openBookIn}
+          onEditRequest={openEditRequest}
+        />
       )}
+      {tab === "statistics" && <StatisticsTab key={`stats-${refreshKey}`} />}
       {tab === "settings" && (
         <SettingsTab
           settings={settings}
@@ -164,6 +190,15 @@ export default function AdminDashboard() {
           editingBooking={editingBooking}
           onClose={closeModal}
           onBooked={handleBooked}
+        />
+      )}
+
+      {editingRequest && (
+        <EditRequestModal
+          request={editingRequest}
+          sittings={settings.sittings}
+          onClose={() => setEditingRequest(null)}
+          onSaved={handleRequestSaved}
         />
       )}
     </div>

@@ -25,9 +25,10 @@ model Settings {
   // Huvudbrytare: stänger hela bokningssystemet för gäster.
   systemOpen Boolean @default(true)
 
-  // Vilka veckodagar restaurangen tar bokningar.
-  // 0 = söndag ... 6 = lördag. Standard: tis(2), ons(3), fre(5).
-  openDaysJson String @default("[2,3,5]")
+  // Vilka dagar restaurangen är öppen styrs numera av OpenPeriod
+  // (terminer/perioder med en veckoregel) + DateException (undantag,
+  // t.ex. praktikveckor) — inte av ett fast fält här längre. Utanför
+  // alla perioder är det stängt per automatik. Se OpenPeriod nedan.
 
   // Sittningstider, t.ex. ["11:30","12:30"]
   sittingsJson String @default("[\"11:30\",\"12:30\"]")
@@ -133,4 +134,71 @@ model GroupRequest {
   createdAt DateTime @default(now())
 
   @@index([status])
+}
+
+// En period (t.ex. en termin) då restaurangen är öppen enligt en
+// veckoregel. Utanför alla perioder är det stängt per automatik — inget
+// att komma ihåg att stänga manuellt inför lov.
+model OpenPeriod {
+  id String @id @default(cuid())
+
+  startDate String // "2026-08-18"
+  endDate   String // "2026-12-19"
+
+  // Vilka veckodagar som är öppna INOM perioden. 0=sön ... 6=lör.
+  weekdaysJson String // "[2,3,5]"
+
+  // Valfri anteckning, t.ex. "HT2026".
+  note String @default("")
+
+  createdAt DateTime @default(now())
+
+  @@index([startDate, endDate])
+}
+
+// Undantag från den vanliga veckoregeln för ett datumintervall — antingen
+// en stängning inuti en öppen period (t.ex. en praktikvecka) eller en
+// extra öppning (t.ex. ett specialtillfälle). En enskild dag är bara ett
+// intervall där startDate = endDate. Undantag vinner alltid över
+// OpenPeriod-regeln för de datum de täcker.
+model DateException {
+  id String @id @default(cuid())
+
+  startDate String
+  endDate   String
+
+  // true = extra öppet, false = stängt (vanligast).
+  isOpen Boolean
+
+  note String @default("")
+
+  createdAt DateTime @default(now())
+
+  @@index([startDate, endDate])
+}
+
+// Väntelista för fullbokade tider. Vid avbokning meddelas den som
+// väntat längst (vars sällskap får plats) via mail med en länk för att
+// slutföra bokningen.
+model WaitlistEntry {
+  id String @id @default(cuid())
+
+  date      String
+  timeSlot  String // exakt önskad tid, samma som en vanlig bokning
+  partySize Int
+
+  name  String
+  email String
+  phone String
+
+  // waiting | notified | booked | expired
+  status String @default("waiting")
+
+  // Slumpad hemlighet i länken i meddelande-mailet.
+  claimToken String @unique
+
+  notifiedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([date, timeSlot, status])
 }

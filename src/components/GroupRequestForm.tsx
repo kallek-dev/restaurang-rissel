@@ -6,7 +6,6 @@ import Calendar from "./Calendar";
 type Props = {
   defaultDate: string | null;
   sittings: string[];
-  openDays: number[];
   maxOnline: number;
   onSubmitted: () => void;
 };
@@ -17,7 +16,6 @@ const fieldClass =
 export default function GroupRequestForm({
   defaultDate,
   sittings,
-  openDays,
   maxOnline,
   onSubmitted,
 }: Props) {
@@ -80,7 +78,7 @@ export default function GroupRequestForm({
         <span className="block text-xs uppercase tracking-widest text-sage mb-2">
           Önskat datum
         </span>
-        <Calendar selectedDate={date || null} onSelect={setDate} openDays={openDays} />
+        <Calendar selectedDate={date || null} onSelect={setDate} />
       </div>
       <div className="grid sm:grid-cols-2 gap-3">
         <label className="block text-sm">
