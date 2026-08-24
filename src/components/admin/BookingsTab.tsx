@@ -1,23 +1,10 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Settings } from "./SettingsTab";
+import DayBookingsTable, { Booking } from "./DayBookingsTable";
 
-export type Booking = {
-  id: string;
-  date: string;
-  sitting: string;
-  timeSlot: string;
-  partySize: number;
-  tableTypeId: string;
-  name: string;
-  email: string;
-  phone: string;
-  allergies: string;
-  note: string;
-  createdByAdmin: boolean;
-  status: string;
-};
+export type { Booking };
 
 type Props = {
   settings: Settings;
@@ -99,46 +86,20 @@ export default function BookingsTab({ settings, onNewBooking, onEditBooking }: P
     load();
   }
 
-  // Gruppera: dag -> sittning -> bokningar (bara icke-avbokade i grupperingen).
-  const groupedByDay = useMemo(() => {
+  // Vilka dagar som ska visas: dagar med bokningar, plus (i veckovyn)
+  // alla öppna dagar även utan bokningar, så man ser att det är tomt.
+  const days = useMemo(() => {
     if (!bookings) return [];
     const active = bookings.filter((b) => b.status !== "cancelled");
-
-    const days = new Set<string>(active.map((b) => b.date));
+    const set = new Set<string>(active.map((b) => b.date));
     if (!customMode) {
-      // Visa alla öppna dagar i veckan även utan bokningar, så man ser
-      // att det verkligen är tomt — inte bara att inget laddats.
       for (let i = 0; i < 7; i++) {
         const d = addDays(weekStart, i);
-        if (settings.openDays.includes(weekdayOf(d))) days.add(d);
+        if (settings.openDays.includes(weekdayOf(d))) set.add(d);
       }
     }
-
-    return Array.from(days)
-      .sort()
-      .map((date) => {
-        const dayBookings = active.filter((b) => b.date === date);
-        const sittingsPresent = new Set(dayBookings.map((b) => b.sitting));
-        for (const s of settings.sittings) sittingsPresent.add(s); // visa alla sittningar, även tomma
-        const sittingGroups = Array.from(sittingsPresent)
-          .sort()
-          .map((sitting) => {
-            const list = dayBookings
-              .filter((b) => b.sitting === sitting)
-              .sort((a, b) => a.timeSlot.localeCompare(b.timeSlot));
-
-            const capacity = settings.tableTypes.map((tt) => {
-              const booked = list.filter((b) => b.tableTypeId === tt.id).length;
-              return { label: tt.label, booked, total: tt.count };
-            });
-
-            return { sitting, bookings: list, capacity };
-          })
-          .filter((g) => g.bookings.length > 0 || settings.sittings.includes(g.sitting));
-
-        return { date, sittingGroups };
-      });
-  }, [bookings, settings, weekStart, customMode]);
+    return Array.from(set).sort();
+  }, [bookings, settings.openDays, weekStart, customMode]);
 
   return (
     <div>
@@ -222,128 +183,26 @@ export default function BookingsTab({ settings, onNewBooking, onEditBooking }: P
 
       {loading && <p className="text-sage font-mono text-sm">Laddar…</p>}
 
-      {!loading && groupedByDay.length === 0 && (
+      {!loading && days.length === 0 && (
         <p className="text-sage text-sm">Inga bokningar hittades.</p>
       )}
 
       <div className="space-y-10">
-        {groupedByDay.map(({ date, sittingGroups }) => (
+        {days.map((date) => (
           <div key={date}>
             <h3 className="font-display uppercase text-base mb-3 pb-2 border-b border-ink/10">
               {formatDayLabel(date)}
             </h3>
-            <div className="overflow-x-auto border border-ink/10 rounded-sm">
-              <table className="w-full text-sm">
-                <thead className="bg-paper-100 text-left">
-                  <tr>
-                    <Th>Tid</Th>
-                    <Th>Namn</Th>
-                    <Th>Antal</Th>
-                    <Th>Bord</Th>
-                    <Th>Telefon</Th>
-                    <Th>Mail</Th>
-                    <Th>Anteckning</Th>
-                    <Th></Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sittingGroups.map(({ sitting, bookings: list, capacity }) => (
-                    <Fragment key={sitting}>
-                      <tr key={`${sitting}-header`} className="border-t border-ink/10 bg-paper-50">
-                        <td colSpan={8} className="px-3 py-1.5">
-                          <div className="flex flex-wrap items-baseline justify-between gap-2">
-                            <span className="font-mono text-xs uppercase tracking-widest text-ink/70">
-                              {sitting}-passet
-                            </span>
-                            <span className="text-xs text-sage">
-                              {capacity
-                                .map((c) => `${c.booked} av ${c.total} ${c.label.toLowerCase()}`)
-                                .join(" · ")}
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                      {list.length === 0 ? (
-                        <tr key={`${sitting}-empty`} className="border-t border-ink/5">
-                          <td colSpan={8} className="px-3 py-2 text-xs text-sage">
-                            Inga bokningar.
-                          </td>
-                        </tr>
-                      ) : (
-                        list.map((b) => (
-                          <tr key={b.id} className="border-t border-ink/5">
-                            <Td className="font-mono">{b.timeSlot}</Td>
-                            <Td>
-                              {b.name}
-                              {b.createdByAdmin && (
-                                <span className="ml-1 text-[10px] uppercase tracking-widest bg-gold/20 text-gold-700 px-1.5 py-0.5 rounded-sm">
-                                  Admin
-                                </span>
-                              )}
-                            </Td>
-                            <Td>{b.partySize}</Td>
-                            <Td>{tableTypeLabel(b.tableTypeId, settings)}</Td>
-                            <Td>{b.phone}</Td>
-                            <Td>{b.email}</Td>
-                            <Td className="max-w-[160px] truncate" title={b.note}>
-                              {b.note || "—"}
-                            </Td>
-                            <Td>
-                              <div className="flex gap-3 whitespace-nowrap">
-                                <button
-                                  onClick={() => onEditBooking(b)}
-                                  className="text-ink underline decoration-dotted text-xs"
-                                >
-                                  Redigera
-                                </button>
-                                <button
-                                  onClick={() => cancelBooking(b.id)}
-                                  className="text-brick underline decoration-dotted text-xs"
-                                >
-                                  Avboka
-                                </button>
-                              </div>
-                            </Td>
-                          </tr>
-                        ))
-                      )}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DayBookingsTable
+              bookings={(bookings ?? []).filter((b) => b.date === date)}
+              sittings={settings.sittings}
+              tableTypes={settings.tableTypes}
+              onEdit={onEditBooking}
+              onCancel={cancelBooking}
+            />
           </div>
         ))}
       </div>
     </div>
-  );
-}
-
-function tableTypeLabel(tableTypeId: string, settings: Settings): string {
-  if (tableTypeId === "manuell") return "Manuell";
-  return settings.tableTypes.find((tt) => tt.id === tableTypeId)?.label ?? tableTypeId;
-}
-
-function Th({ children }: { children?: React.ReactNode }) {
-  return (
-    <th className="px-3 py-2 text-xs uppercase tracking-widest text-sage font-medium">
-      {children}
-    </th>
-  );
-}
-
-function Td({
-  children,
-  className,
-  title,
-}: {
-  children?: React.ReactNode;
-  className?: string;
-  title?: string;
-}) {
-  return (
-    <td className={`px-3 py-2 ${className ?? ""}`} title={title}>
-      {children}
-    </td>
   );
 }

@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Calendar from "./Calendar";
 
 type Props = {
   defaultDate: string | null;
   sittings: string[];
+  openDays: number[];
   maxOnline: number;
   onSubmitted: () => void;
 };
@@ -15,6 +17,7 @@ const fieldClass =
 export default function GroupRequestForm({
   defaultDate,
   sittings,
+  openDays,
   maxOnline,
   onSubmitted,
 }: Props) {
@@ -73,19 +76,13 @@ export default function GroupRequestForm({
         online, eftersom det oftast kräver en särskild bordslösning. Fyll
         i uppgifterna så återkommer vi med en bekräftelse.
       </p>
+      <div>
+        <span className="block text-xs uppercase tracking-widest text-sage mb-2">
+          Önskat datum
+        </span>
+        <Calendar selectedDate={date || null} onSelect={setDate} openDays={openDays} />
+      </div>
       <div className="grid sm:grid-cols-2 gap-3">
-        <label className="block text-sm">
-          <span className="block text-xs uppercase tracking-widest text-sage mb-1">
-            Önskat datum
-          </span>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className={fieldClass}
-            required
-          />
-        </label>
         <label className="block text-sm">
           <span className="block text-xs uppercase tracking-widest text-sage mb-1">
             Önskad sittning
@@ -107,10 +104,14 @@ export default function GroupRequestForm({
             Antal personer
           </span>
           <input
-            type="number"
-            min={maxOnline + 1}
-            value={partySize}
-            onChange={(e) => setPartySize(Number(e.target.value) || 0)}
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={partySize === 0 ? "" : String(partySize)}
+            onChange={(e) => {
+              const digitsOnly = e.target.value.replace(/\D/g, "");
+              setPartySize(digitsOnly === "" ? 0 : Number(digitsOnly));
+            }}
             className={fieldClass}
           />
         </label>

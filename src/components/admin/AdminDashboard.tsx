@@ -129,7 +129,14 @@ export default function AdminDashboard() {
         ))}
       </nav>
 
-      {tab === "today" && <TodayTab key={`today-${refreshKey}`} onNewBooking={openNewBooking} />}
+      {tab === "today" && (
+        <TodayTab
+          key={`today-${refreshKey}`}
+          settings={settings}
+          onNewBooking={openNewBooking}
+          onEditBooking={openEditBooking}
+        />
+      )}
       {tab === "bookings" && (
         <BookingsTab
           key={`bookings-${refreshKey}`}
@@ -152,6 +159,7 @@ export default function AdminDashboard() {
 
       {modalOpen && (
         <ManualBookingModal
+          settings={settings}
           prefill={modalPrefill}
           editingBooking={editingBooking}
           onClose={closeModal}

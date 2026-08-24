@@ -327,6 +327,7 @@ export default function BookingForm() {
             <GroupRequestForm
               defaultDate={selectedDate}
               sittings={settings.sittings}
+              openDays={settings.openDays}
               maxOnline={maxOnline}
               onSubmitted={() => setGroupRequestSubmitted(true)}
             />

@@ -191,9 +191,11 @@ export type AdminDayCapacity = {
 
 // Full numerisk kapacitetsöversikt för admin (inte gästsidan) — exakt
 // antal bokade/lediga bord per typ och tid, för att snabbt se dagens
-// läge utan att räkna manuellt i bokningslistan.
+// läge utan att räkna manuellt i bokningslistan. `excludeBookingId`
+// används vid redigering, så en bokning inte räknas emot sig själv.
 export async function getAdminCapacityForDate(
-  dateStr: string
+  dateStr: string,
+  excludeBookingId?: string
 ): Promise<AdminDayCapacity> {
   const settings = await getSettings();
   // Kapacitetsöversikten ska funka även för dagar som är formellt
@@ -204,7 +206,11 @@ export async function getAdminCapacityForDate(
 
   const bookings: { timeSlot: string; tableTypeId: string }[] =
     await prisma.booking.findMany({
-      where: { date: dateStr, status: "confirmed" },
+      where: {
+        date: dateStr,
+        status: "confirmed",
+        ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}),
+      },
       select: { timeSlot: true, tableTypeId: true },
     });
 

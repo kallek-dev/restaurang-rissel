@@ -1,20 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-type Booking = {
-  id: string;
-  date: string;
-  sitting: string;
-  timeSlot: string;
-  partySize: number;
-  tableTypeId: string;
-  name: string;
-  phone: string;
-  note: string;
-  createdByAdmin: boolean;
-  status: string;
-};
+import type { Settings } from "./SettingsTab";
+import DayBookingsTable, { Booking } from "./DayBookingsTable";
 
 type CapacitySlot = {
   time: string;
@@ -25,7 +13,9 @@ type CapacitySitting = { sitting: string; slots: CapacitySlot[] };
 type CapacityData = { date: string; open: boolean; sittingGroups: CapacitySitting[] };
 
 type Props = {
+  settings: Settings;
   onNewBooking: (date: string) => void;
+  onEditBooking: (booking: Booking) => void;
 };
 
 function todayISO(): string {
@@ -48,7 +38,7 @@ function formatDateLabel(dateStr: string): string {
   }).format(date);
 }
 
-export default function TodayTab({ onNewBooking }: Props) {
+export default function TodayTab({ settings, onNewBooking, onEditBooking }: Props) {
   const [date, setDate] = useState(todayISO());
   const [bookings, setBookings] = useState<Booking[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,15 +46,20 @@ export default function TodayTab({ onNewBooking }: Props) {
   const [showCapacity, setShowCapacity] = useState(false);
 
   useEffect(() => {
+    load();
+    fetch(`/api/admin/availability?date=${date}`)
+      .then((r) => r.json())
+      .then(setCapacity);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
+
+  function load() {
     setLoading(true);
     fetch(`/api/admin/bookings?date=${date}`)
       .then((r) => r.json())
       .then(setBookings)
       .finally(() => setLoading(false));
-    fetch(`/api/admin/availability?date=${date}`)
-      .then((r) => r.json())
-      .then(setCapacity);
-  }, [date]);
+  }
 
   async function cancelBooking(id: string) {
     await fetch(`/api/admin/bookings/${id}`, {
@@ -72,9 +67,7 @@ export default function TodayTab({ onNewBooking }: Props) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "cancelled" }),
     });
-    fetch(`/api/admin/bookings?date=${date}`)
-      .then((r) => r.json())
-      .then(setBookings);
+    load();
   }
 
   const active = bookings?.filter((b) => b.status !== "cancelled") ?? [];
@@ -126,7 +119,7 @@ export default function TodayTab({ onNewBooking }: Props) {
           onClick={() => setShowCapacity((v) => !v)}
           className="text-sm font-display uppercase tracking-wide text-sage hover:text-ink flex items-center gap-2"
         >
-          Bordsläge {showCapacity ? "▲" : "▼"}
+          Bordsläge, detaljerat {showCapacity ? "▲" : "▼"}
         </button>
         {showCapacity && capacity && (
           <div className="mt-3 border border-ink/10 rounded-sm p-4 space-y-4">
@@ -168,46 +161,19 @@ export default function TodayTab({ onNewBooking }: Props) {
 
       {loading && <p className="text-sage font-mono text-sm">Laddar…</p>}
 
-      {!loading && active.length === 0 && (
-        <p className="text-sage text-sm">Inga bokningar den här dagen.</p>
-      )}
-
-      {!loading && active.length > 0 && (
+      {!loading && (
         <>
           <p className="text-xs text-sage mb-3">
             {active.length} {active.length === 1 ? "bokning" : "bokningar"},{" "}
             {totalGuests} gäster totalt
           </p>
-          <div className="space-y-2">
-            {active.map((b) => (
-              <div
-                key={b.id}
-                className="flex flex-wrap items-center gap-4 border border-ink/10 rounded-sm p-3"
-              >
-                <span className="font-mono text-sm min-w-[50px]">
-                  {b.timeSlot}
-                </span>
-                <span className="font-medium min-w-[140px]">{b.name}</span>
-                <span className="text-sm text-sage">{b.partySize} pers</span>
-                <span className="text-sm text-sage">{b.tableTypeId}</span>
-                <span className="text-sm text-sage">{b.phone}</span>
-                {b.createdByAdmin && (
-                  <span className="text-[10px] uppercase tracking-widest bg-gold/20 text-gold-700 px-2 py-0.5 rounded-sm">
-                    Admin
-                  </span>
-                )}
-                {b.note && (
-                  <span className="text-xs text-sage italic">{b.note}</span>
-                )}
-                <button
-                  onClick={() => cancelBooking(b.id)}
-                  className="ml-auto text-brick underline decoration-dotted text-xs"
-                >
-                  Avboka
-                </button>
-              </div>
-            ))}
-          </div>
+          <DayBookingsTable
+            bookings={bookings ?? []}
+            sittings={settings.sittings}
+            tableTypes={settings.tableTypes}
+            onEdit={onEditBooking}
+            onCancel={cancelBooking}
+          />
         </>
       )}
     </div>

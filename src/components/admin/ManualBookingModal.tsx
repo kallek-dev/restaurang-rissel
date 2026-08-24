@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import SlotPicker from "@/components/SlotPicker";
-import type { Booking } from "./BookingsTab";
+import AdminSlotPicker from "./AdminSlotPicker";
+import type { Booking } from "./DayBookingsTable";
+import type { Settings } from "./SettingsTab";
 
-type SlotAvailability = { time: string; full: boolean };
-type SittingGroup = { sitting: string; slots: SlotAvailability[] };
-type DateAvailability = { date: string; open: boolean; sittingGroups: SittingGroup[] };
+type TableAvailability = { id: string; label: string; booked: number; total: number };
+type AdminSlot = { time: string; tablesBooked: number; tableAvailability: TableAvailability[] };
+type AdminSittingGroup = { sitting: string; slots: AdminSlot[] };
+type AdminDayCapacity = { date: string; open: boolean; sittingGroups: AdminSittingGroup[] };
 
 export type ManualBookingPrefill = {
   date?: string;
@@ -19,6 +21,7 @@ export type ManualBookingPrefill = {
 };
 
 type Props = {
+  settings: Settings;
   prefill: ManualBookingPrefill | null;
   editingBooking?: Booking | null;
   onClose: () => void;
@@ -28,13 +31,15 @@ type Props = {
 const fieldClass =
   "w-full bg-white border border-ink/15 rounded-sm px-3 py-2 text-sm text-ink";
 
-export default function ManualBookingModal({ prefill, editingBooking, onClose, onBooked }: Props) {
+export default function ManualBookingModal({ settings, prefill, editingBooking, onClose, onBooked }: Props) {
   const isEditing = Boolean(editingBooking);
+  const maxTableSeats = Math.max(0, ...settings.tableTypes.map((tt) => tt.seats));
 
   const [date, setDate] = useState(editingBooking?.date ?? prefill?.date ?? "");
   const [manual, setManual] = useState(
     editingBooking ? editingBooking.tableTypeId === "manuell" : Boolean(prefill?.groupRequestId)
   );
+  const [autoManualNote, setAutoManualNote] = useState(false);
   const [timeSlot, setTimeSlot] = useState<string | null>(editingBooking?.timeSlot ?? null);
   const [manualTime, setManualTime] = useState(editingBooking?.timeSlot ?? "12:00");
   const [partySize, setPartySize] = useState(editingBooking?.partySize ?? prefill?.partySize ?? 2);
@@ -48,7 +53,7 @@ export default function ManualBookingModal({ prefill, editingBooking, onClose, o
   const [note, setNote] = useState(editingBooking?.note ?? prefill?.message ?? "");
   const [repeatWeeks, setRepeatWeeks] = useState(1);
 
-  const [availability, setAvailability] = useState<DateAvailability | null>(null);
+  const [capacity, setCapacity] = useState<AdminDayCapacity | null>(null);
   const [loadingAvailability, setLoadingAvailability] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
@@ -59,20 +64,30 @@ export default function ManualBookingModal({ prefill, editingBooking, onClose, o
     failed: { date: string; error: string }[];
   } | null>(null);
 
+  // Sällskap större än det största bordet kan aldrig få plats i
+  // automatiskt läge — kryssa i manuellt läge åt admin istället för
+  // att bara visa en vägg av överstrukna tider.
+  useEffect(() => {
+    if (!manual && maxTableSeats > 0 && partySize > maxTableSeats) {
+      setManual(true);
+      setAutoManualNote(true);
+    }
+  }, [partySize, maxTableSeats, manual]);
+
   useEffect(() => {
     if (manual || !date) {
-      setAvailability(null);
+      setCapacity(null);
       return;
     }
     setLoadingAvailability(true);
     setTimeSlot((cur) => (isEditing && cur === editingBooking?.timeSlot ? cur : null));
-    const params = new URLSearchParams({ date, partySize: String(partySize) });
+    const params = new URLSearchParams({ date });
     if (editingBooking) params.set("exclude", editingBooking.id);
-    fetch(`/api/availability?${params.toString()}`)
+    fetch(`/api/admin/availability?${params.toString()}`)
       .then((r) => r.json())
-      .then(setAvailability)
+      .then(setCapacity)
       .finally(() => setLoadingAvailability(false));
-  }, [date, manual, partySize]);
+  }, [date, manual]);
 
   const effectiveTime = manual ? manualTime : timeSlot;
   const needsAllergyConsent = allergies.trim().length > 0;
@@ -228,7 +243,10 @@ export default function ManualBookingModal({ prefill, editingBooking, onClose, o
               <input
                 type="checkbox"
                 checked={manual}
-                onChange={(e) => setManual(e.target.checked)}
+                onChange={(e) => {
+                  setManual(e.target.checked);
+                  setAutoManualNote(false);
+                }}
                 className="mt-0.5"
               />
               <span>
@@ -237,6 +255,13 @@ export default function ManualBookingModal({ prefill, editingBooking, onClose, o
                 största bord (t.ex. ihopskjutna bord), eller vid andra
                 särskilda lösningar. Utan den här ikryssad stoppas
                 sällskap som inte ryms i någon vanlig bordstyp.
+                {autoManualNote && (
+                  <span className="block mt-1 text-gold-700">
+                    Kryssades i automatiskt eftersom {partySize} personer
+                    inte ryms i något bord (störst är {maxTableSeats}{" "}
+                    platser).
+                  </span>
+                )}
               </span>
             </label>
 
@@ -274,9 +299,11 @@ export default function ManualBookingModal({ prefill, editingBooking, onClose, o
                 {date && loadingAvailability && (
                   <p className="text-sm text-sage font-mono">Hämtar…</p>
                 )}
-                {date && !loadingAvailability && availability && (
-                  <SlotPicker
-                    groups={availability.sittingGroups}
+                {date && !loadingAvailability && capacity && (
+                  <AdminSlotPicker
+                    sittingGroups={capacity.sittingGroups}
+                    tableTypes={settings.tableTypes}
+                    partySize={partySize}
                     selectedTime={timeSlot}
                     onSelect={setTimeSlot}
                   />
